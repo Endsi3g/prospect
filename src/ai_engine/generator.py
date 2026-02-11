@@ -1,39 +1,46 @@
-from .prompts import COLD_EMAIL_TEMPLATE, LINKEDIN_CONNECTION_TEMPLATE, LINKEDIN_MESSAGE_TEMPLATE
+from .prompts import COLD_EMAIL_TEMPLATE, LINKEDIN_CONNECTION_TEMPLATE
 from ..core.models import Lead
+from .provider import LLMProvider, MockProvider
 
 class MessageGenerator:
-    def __init__(self):
-        pass
+    def __init__(self, provider: LLMProvider = None):
+        self.provider = provider or MockProvider()
 
     def generate_cold_email(self, lead: Lead) -> str:
-        # In a real scenario, we would call OpenAI here to dynamically fill or rewrite
-        # For now, we allow simple f-string format or use a "smart" fill
+        # Use the template to structure the prompt if possible, or just build a prompt.
+        # Here we build a direct prompt for the LLM.
         
-        # Determine pain point area based on title/industry
         pain_point_area = "developer productivity"
-        pain_point = "managing technical debt"
         if "sales" in (lead.title or "").lower():
              pain_point_area = "pipeline velocity"
-             pain_point = "lead qualification time"
-             
-        # Mock "AI" generation by filling the template intelligently
-        content = COLD_EMAIL_TEMPLATE.format(
-            first_name=lead.first_name,
-            company_name=lead.company.name,
-            pain_point_area=pain_point_area,
-            company_focus=lead.company.description or "growth",
-            job_title=lead.title or "leader",
-            pain_point=pain_point,
-            related_competitor="Industry Leaders",
-            value_proposition="automating the busywork"
-        )
-        return content
+
+        prompt = f"""
+        You are an expert SDR. Write a cold email to:
+        Name: {lead.first_name}
+        Title: {lead.title}
+        Company: {lead.company.name}
+        Company Description: {lead.company.description}
+        Industry: {lead.company.industry}
+
+        Context:
+        Their likely pain point is {pain_point_area}.
+        Our solution helps automate prospecting with open source tools.
+
+        Instructions:
+        - Keep it under 150 words.
+        - Be personalized and relevant.
+        - End with a call to action.
+        """
+
+        return self.provider.generate(prompt)
 
     def generate_linkedin_connect(self, lead: Lead) -> str:
-        content = LINKEDIN_CONNECTION_TEMPLATE.format(
-            first_name=lead.first_name,
-            company_name=lead.company.name,
-            industry=lead.company.industry or "Tech",
-            job_title=lead.title or "Leader"
-        )
-        return content
+        prompt = f"""
+        Write a LinkedIn connection request (max 300 chars) for:
+        Name: {lead.first_name}
+        Title: {lead.title}
+        Company: {lead.company.name}
+
+        Mention I'm expanding my network in {lead.company.industry}.
+        """
+        return self.provider.generate(prompt)

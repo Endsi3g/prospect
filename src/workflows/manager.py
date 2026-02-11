@@ -1,15 +1,16 @@
-from typing import List, Dict
+from typing import List, Dict, Optional
 from ..core.models import Lead, LeadStatus
 from ..enrichment.service import EnrichmentService
 from ..enrichment.client import SourcingClient
 from ..scoring.engine import ScoringEngine
 from ..ai_engine.generator import MessageGenerator
+from ..ai_engine.provider import LLMProvider
 
 class WorkflowManager:
-    def __init__(self, sourcing_client: SourcingClient):
+    def __init__(self, sourcing_client: SourcingClient, llm_provider: Optional[LLMProvider] = None):
         self.enricher = EnrichmentService(sourcing_client)
         self.scorer = ScoringEngine()
-        self.generator = MessageGenerator()
+        self.generator = MessageGenerator(provider=llm_provider)
         
         # Configuration
         self.min_score_threshold = 40  # Leads with score > 40 get processed

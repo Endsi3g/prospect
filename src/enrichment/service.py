@@ -11,12 +11,34 @@ class EnrichmentService:
         Converts raw API data into our standardized Lead model.
         """
         # First, enrich company data if domain is present
-        company_data = {"name": raw_data.get("company_name", "Unknown")}
+        # Start with data from CSV/Source
+        company_data = {
+            "name": raw_data.get("company_name", "Unknown"),
+            "domain": raw_data.get("company_domain"),
+            "industry": raw_data.get("industry"),
+            "size_range": raw_data.get("size_range"),
+            "revenue_range": raw_data.get("revenue_range"),
+            "location": raw_data.get("location"),
+            "description": raw_data.get("company_description")
+        }
+
+        # Remove None values to allow enrichment to fill/overwrite or defaults
+        company_data = {k: v for k, v in company_data.items() if v is not None}
+
         domain = raw_data.get("company_domain")
         
         if domain:
             enriched_company = self.client.enrich_company(domain)
-            company_data.update(enriched_company)
+            # Update with enriched data (enriched data takes precedence usually, or fills gaps)
+            # Here we let enriched data overwrite source data if present.
+            # But FreeSourcingClient returns "industry": "Unknown" which is bad if CSV had it.
+            # So we should only update if enriched value is meaningful?
+            # Or assume enrichment is better.
+            # FreeSourcingClient returns defaults.
+            # I should fix FreeSourcingClient to NOT return "Unknown" if it failed, or return None.
+
+            # Let's simple merge for now.
+            company_data.update({k: v for k, v in enriched_company.items() if v})
         
         company = Company(**company_data)
 

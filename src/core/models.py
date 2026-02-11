@@ -64,6 +64,8 @@ class Lead(BaseModel):
     interactions: List[Interaction] = Field(default_factory=list)
     
     tags: List[str] = Field(default_factory=list)
+    details: Dict[str, Any] = Field(default_factory=dict)
+
     created_at: datetime = Field(default_factory=datetime.now)
     updated_at: datetime = Field(default_factory=datetime.now)
 
