@@ -1,8 +1,10 @@
+import logging
 from src.enrichment.client import MockApolloClient
 from src.workflows.manager import WorkflowManager
 import json
 
 def main():
+    logging.basicConfig(level=logging.INFO, format='%(message)s')
     print("==================================================")
     print("   AUTOMATED PROSPECTING SYSTEM - DEMO RUN")
     print("==================================================\n")
