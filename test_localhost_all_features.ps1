@@ -159,13 +159,13 @@ try {
     $leadEmail = "smoke+$runId@example.com"
 
     $leadPayload = @{
-        first_name = "Smoke"
-        last_name = "Test"
-        email = $leadEmail
-        phone = "+1-555-0101"
+        first_name   = "Smoke"
+        last_name    = "Test"
+        email        = $leadEmail
+        phone        = "+1-555-0101"
         company_name = "Smoke Corp"
-        status = "NEW"
-        segment = "General"
+        status       = "NEW"
+        segment      = "General"
     }
     $createdLead = Invoke-AdminApi -Method POST -Path "/api/v1/admin/leads" -Payload $leadPayload -Headers $headers
     Assert-Condition ($createdLead.email -eq $leadEmail) "Lead creation failed."
@@ -181,17 +181,17 @@ try {
     Assert-Condition $leadExists "Created lead not found in lead list."
 
     $taskPayload = @{
-        title = "Smoke task $runId"
-        status = "To Do"
-        priority = "Medium"
+        title       = "Smoke task $runId"
+        status      = "To Do"
+        priority    = "Medium"
         assigned_to = "You"
-        lead_id = $createdLead.id
+        lead_id     = $createdLead.id
     }
     $createdTask = Invoke-AdminApi -Method POST -Path "/api/v1/admin/tasks" -Payload $taskPayload -Headers $headers
     Assert-Condition ($createdTask.title -eq $taskPayload.title) "Task creation failed."
 
     $updatedTask = Invoke-AdminApi -Method PATCH -Path "/api/v1/admin/tasks/$($createdTask.id)" -Payload @{
-        status = "Done"
+        status   = "Done"
         priority = "High"
     } -Headers $headers
     Assert-Condition ($updatedTask.status -eq "Done") "Task update failed."
@@ -203,11 +203,11 @@ try {
     Assert-Condition ($deletedTask.deleted -eq $true) "Task deletion failed."
 
     $projectPayload = @{
-        name = "Smoke project $runId"
+        name        = "Smoke project $runId"
         description = "Created by localhost smoke script."
-        status = "Planning"
-        lead_id = $createdLead.id
-        due_date = (Get-Date).AddDays(7).ToString("s")
+        status      = "Planning"
+        lead_id     = $createdLead.id
+        due_date    = (Get-Date).AddDays(7).ToString("s")
     }
     $createdProject = Invoke-AdminApi -Method POST -Path "/api/v1/admin/projects" -Payload $projectPayload -Headers $headers
     Assert-Condition ($createdProject.name -eq $projectPayload.name) "Project creation failed."
@@ -225,12 +225,12 @@ try {
     Assert-Condition ($null -ne $settings.support_email) "Settings payload missing support_email."
 
     $settingsUpdate = @{
-        organization_name = $settings.organization_name
-        locale = $settings.locale
-        timezone = $settings.timezone
-        default_page_size = [int]$settings.default_page_size
+        organization_name         = $settings.organization_name
+        locale                    = $settings.locale
+        timezone                  = $settings.timezone
+        default_page_size         = [int]$settings.default_page_size
         dashboard_refresh_seconds = [int]$settings.dashboard_refresh_seconds
-        support_email = $settings.support_email
+        support_email             = $settings.support_email
     }
     $savedSettings = Invoke-AdminApi -Method PUT -Path "/api/v1/admin/settings" -Payload $settingsUpdate -Headers $headers
     Assert-Condition ($savedSettings.support_email -eq $settings.support_email) "Settings update/readback failed."
@@ -260,6 +260,16 @@ Csv,Commit,commit+$runId@example.com,Csv Corp,NEW,General
 
     $autofixLatest = Invoke-AdminApi -Method GET -Path "/api/v1/admin/autofix/latest" -Payload $null -Headers $headers
     Assert-Condition ($null -ne $autofixLatest.available) "Autofix latest payload invalid."
+
+    Write-Step "Running Python verification scripts"
+    
+    Write-Host "Verifying filtering/sorting/pagination..."
+    python tests/verify_filters.py
+    if ($LASTEXITCODE -ne 0) { throw "Filters verification failed." }
+
+    Write-Host "Verifying new admin features (Account/Billing/Notifications/Reports)..."
+    python tests/verify_admin_features.py
+    if ($LASTEXITCODE -ne 0) { throw "Admin features verification failed." }
 
     Write-Step "Frontend smoke tests"
     $frontendPaths = @(

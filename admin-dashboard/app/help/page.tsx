@@ -37,7 +37,7 @@ export default function HelpPage() {
       <SidebarInset>
         <SiteHeader />
         <div className="flex flex-1 flex-col gap-4 p-4 pt-0 md:p-8">
-          <h2 className="text-3xl font-bold tracking-tight">Centre d'aide</h2>
+          <h2 className="text-3xl font-bold tracking-tight">Centre aide</h2>
           {isLoading ? (
             <div className="grid gap-4 lg:grid-cols-2">
               <Skeleton className="h-32 w-full" />
@@ -46,7 +46,7 @@ export default function HelpPage() {
             </div>
           ) : null}
           {error ? (
-            <div className="text-sm text-red-600">Impossible de charger l'aide.</div>
+            <div className="text-sm text-red-600">Impossible de charger le centre aide.</div>
           ) : null}
           {data ? (
             <div className="grid gap-4 lg:grid-cols-2">
@@ -98,3 +98,4 @@ export default function HelpPage() {
     </SidebarProvider>
   )
 }
+

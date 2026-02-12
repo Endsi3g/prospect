@@ -352,7 +352,7 @@ export function ModalSystemProvider({ children }: { children: React.ReactNode })
           <SheetHeader>
             <SheetTitle className="flex items-center gap-2">
               <IconHelp className="size-4" />
-              Centre d'aide
+              Centre aide
             </SheetTitle>
             <SheetDescription>
               Questions frequentes et liens utiles.
@@ -508,3 +508,4 @@ export function ModalSystemProvider({ children }: { children: React.ReactNode })
     </ModalSystemContext.Provider>
   )
 }
+

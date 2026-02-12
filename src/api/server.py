@@ -83,6 +83,49 @@ def create_lead(lead: Lead, db: Session = Depends(get_db)):
     db.refresh(db_lead)
     return db_lead
 
+@app.get("/api/v1/admin/leads/{lead_id}", response_model=Lead)
+def get_lead(lead_id: str, db: Session = Depends(get_db)):
+    # Try different ID lookups: by email (PK) or potentially generated ID if we had one
+    # The models define id=email, so lead_id should be the email.
+    
+    lead = db.query(DBLead).filter(DBLead.id == lead_id).first()
+    if not lead:
+        # Fallback: try to find by ID if it was uuid (though currently model says id=email)
+        # Or maybe the partial email?
+        raise HTTPException(status_code=404, detail="Lead not found")
+    return lead
+
+@app.patch("/api/v1/admin/leads/{lead_id}", response_model=Lead)
+def update_lead(lead_id: str, lead_update: dict, db: Session = Depends(get_db)):
+    # Partial update
+    db_lead = db.query(DBLead).filter(DBLead.id == lead_id).first()
+    if not db_lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    
+    # Update fields provided in the dict
+    for key, value in lead_update.items():
+        if hasattr(db_lead, key):
+            setattr(db_lead, key, value)
+    
+    # Special handling for company update if nested?
+    # For now assume flat updates or specific logic if needed. 
+    # If 'company' is passed, it might be a dict. 
+    # But for PATCH, usually we expect flat fields or we strictly parse.
+    
+    db.commit()
+    db.refresh(db_lead)
+    return db_lead
+
+@app.get("/api/v1/admin/leads/{lead_id}/tasks", response_model=List[Task])
+def get_lead_tasks(lead_id: str, db: Session = Depends(get_db)):
+    # Tasks where lead_id matches
+    return db.query(DBTask).filter(DBTask.lead_id == lead_id).all()
+
+@app.get("/api/v1/admin/leads/{lead_id}/projects", response_model=List[Project])
+def get_lead_projects(lead_id: str, db: Session = Depends(get_db)):
+    return db.query(DBProject).filter(DBProject.lead_id == lead_id).all()
+
+
 @app.get("/api/v1/admin/projects", response_model=List[Project])
 def get_projects(db: Session = Depends(get_db)):
     return db.query(DBProject).all()

@@ -6,11 +6,15 @@ import { IconCalendar, IconFolder, IconPencil, IconTrash } from "@tabler/icons-r
 import { toast } from "sonner"
 
 import { AppSidebar } from "@/components/app-sidebar"
+import { ExportCsvButton } from "@/components/export-csv-button"
 import { useModalSystem } from "@/components/modal-system-provider"
 import { SiteHeader } from "@/components/site-header"
+import { SyncStatus } from "@/components/sync-status"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { EmptyState } from "@/components/ui/empty-state"
+import { ErrorState } from "@/components/ui/error-state"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   Select,
@@ -37,7 +41,6 @@ type Project = {
 }
 
 const PROJECT_STATUSES = ["all", "Planning", "In Progress", "On Hold", "Completed", "Cancelled"]
-const SORT_MODES = ["newest", "due_asc", "due_desc"]
 const fetcher = <T,>(path: string) => requestApi<T>(path)
 
 export default function ProjectsPage() {
@@ -46,9 +49,15 @@ export default function ProjectsPage() {
     "/api/v1/admin/projects",
     fetcher,
   )
+  const [updatedAt, setUpdatedAt] = React.useState<Date | null>(null)
 
   const [statusFilter, setStatusFilter] = React.useState("all")
   const [sortMode, setSortMode] = React.useState("newest")
+
+  React.useEffect(() => {
+    if (!projects) return
+    setUpdatedAt(new Date())
+  }, [projects])
 
   const displayedProjects = React.useMemo(() => {
     const source = projects || []
@@ -125,8 +134,12 @@ export default function ProjectsPage() {
         <div className="flex flex-1 flex-col gap-4 p-4 pt-0 md:p-8">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="text-3xl font-bold tracking-tight">Projets</h2>
-            <Button onClick={createProject}>Nouveau projet</Button>
+            <div className="flex flex-wrap gap-2">
+              <ExportCsvButton entity="projects" />
+              <Button onClick={createProject}>Nouveau projet</Button>
+            </div>
           </div>
+          <SyncStatus updatedAt={updatedAt} />
 
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             <Select value={statusFilter} onValueChange={setStatusFilter}>
@@ -141,7 +154,7 @@ export default function ProjectsPage() {
                 ))}
               </SelectContent>
             </Select>
-            <Select value={sortMode} onValueChange={(value) => setSortMode(value as (typeof SORT_MODES)[number])}>
+            <Select value={sortMode} onValueChange={setSortMode}>
               <SelectTrigger className="w-full sm:w-56">
                 <SelectValue placeholder="Tri" />
               </SelectTrigger>
@@ -160,7 +173,10 @@ export default function ProjectsPage() {
               <Skeleton className="h-48 w-full" />
             </div>
           ) : error ? (
-            <div className="text-red-500">Impossible de charger les projets.</div>
+            <ErrorState
+              title="Impossible de charger les projets."
+              onRetry={() => void mutate()}
+            />
           ) : (
             <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
               {displayedProjects.length > 0 ? (
@@ -199,9 +215,13 @@ export default function ProjectsPage() {
                   </Card>
                 ))
               ) : (
-                <Card className="col-span-full border-dashed py-12 text-center text-muted-foreground">
-                  Aucun projet. Creez votre premier projet.
-                </Card>
+                <div className="col-span-full">
+                  <EmptyState
+                    title="Aucun projet"
+                    description="Creez votre premier projet pour structurer vos actions commerciales."
+                    action={<Button onClick={createProject}>Creer un projet</Button>}
+                  />
+                </div>
               )}
             </div>
           )}

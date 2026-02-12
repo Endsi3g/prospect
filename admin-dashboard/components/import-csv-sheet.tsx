@@ -180,7 +180,7 @@ export function ImportCsvSheet({ onImported }: { onImported?: () => void }) {
         <SheetHeader>
           <SheetTitle>Import CSV intelligent</SheetTitle>
           <SheetDescription>
-            Detection automatique de table, mapping manuel possible, puis import dans l'application.
+            Detection automatique de table, mapping manuel possible, puis import dans cette application.
           </SheetDescription>
         </SheetHeader>
         <div className="mt-4 space-y-4">
@@ -285,3 +285,4 @@ export function ImportCsvSheet({ onImported }: { onImported?: () => void }) {
     </Sheet>
   )
 }
+

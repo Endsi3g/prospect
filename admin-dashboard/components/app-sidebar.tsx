@@ -68,18 +68,21 @@ const data = {
   documents: [
     {
       name: "Bibliotheque",
-      url: "#",
+      url: "/library",
       icon: IconDatabase,
+      badge: "Nouveau",
     },
     {
       name: "Rapports",
-      url: "#",
+      url: "/reports",
       icon: IconReport,
+      badge: "Live",
     },
     {
       name: "Assistant",
-      url: "#",
+      url: "/assistant",
       icon: IconFileWord,
+      badge: "Beta",
     },
   ],
 }
@@ -91,6 +94,11 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       title: messages.sidebar.settings,
       url: "/settings",
       icon: IconSettings,
+    },
+    {
+      title: "Equipe",
+      url: "/settings/team",
+      icon: IconUsers,
     },
     {
       title: messages.sidebar.getHelp,
@@ -115,7 +123,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               asChild
               className="data-[slot=sidebar-menu-button]:!p-1.5 hover:bg-transparent"
             >
-              <a href="#">
+              <a href="/dashboard">
                 <div className="flex aspect-square size-6 items-center justify-center rounded-lg bg-black text-white">
                   <IconInnerShadowTop className="size-4" />
                 </div>

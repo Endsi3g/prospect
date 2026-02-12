@@ -4,9 +4,13 @@ import * as React from "react"
 import useSWR from "swr"
 
 import { AppSidebar } from "@/components/app-sidebar"
+import { ExportCsvButton } from "@/components/export-csv-button"
 import { ImportCsvSheet } from "@/components/import-csv-sheet"
 import { Lead, LeadsTable } from "@/components/leads-table"
 import { SiteHeader } from "@/components/site-header"
+import { SyncStatus } from "@/components/sync-status"
+import { EmptyState } from "@/components/ui/empty-state"
+import { ErrorState } from "@/components/ui/error-state"
 import { Skeleton } from "@/components/ui/skeleton"
 import { fetchApi } from "@/lib/api"
 import {
@@ -35,10 +39,26 @@ type LeadsResponse = {
 const fetcher = <T,>(path: string) => fetchApi<T>(path)
 
 export default function LeadsPage() {
+  const [page, setPage] = React.useState(1)
+  const pageSize = 25
+  const [search, setSearch] = React.useState("")
+  const [status, setStatus] = React.useState("ALL")
+  const [sort, setSort] = React.useState("created_at")
+  const [order, setOrder] = React.useState("desc")
+
+  // Debounce search for API calls
+  const [debouncedSearch, setDebouncedSearch] = React.useState(search)
+  React.useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 500)
+    return () => clearTimeout(timer)
+  }, [search])
+
+  const queryStatus = status === "ALL" ? "" : status
   const { data, error, isLoading, mutate } = useSWR<LeadsResponse>(
-    "/api/v1/admin/leads?page=1&page_size=100",
+    `/api/v1/admin/leads?page=${page}&page_size=${pageSize}&q=${encodeURIComponent(debouncedSearch)}&status=${encodeURIComponent(queryStatus)}&sort=${sort}&order=${order}`,
     fetcher,
   )
+  const [updatedAt, setUpdatedAt] = React.useState<Date | null>(null)
 
   React.useEffect(() => {
     const handler = () => {
@@ -47,6 +67,11 @@ export default function LeadsPage() {
     window.addEventListener("prospect:lead-created", handler)
     return () => window.removeEventListener("prospect:lead-created", handler)
   }, [mutate])
+
+  React.useEffect(() => {
+    if (!data) return
+    setUpdatedAt(new Date())
+  }, [data])
 
   const leads: Lead[] = data?.items
     ? data.items.map((item) => ({
@@ -74,23 +99,46 @@ export default function LeadsPage() {
       <SidebarInset>
         <SiteHeader />
         <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
-          <div className="flex items-center justify-between py-4">
+          <div className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="text-3xl font-bold tracking-tight">Leads</h2>
-            <ImportCsvSheet onImported={() => void mutate()} />
-          </div>
-          {error ? (
-            <div className="text-sm text-red-600">
-              Erreur de chargement des leads.
+            <div className="flex flex-wrap items-center gap-2">
+              <ExportCsvButton entity="leads" />
+              <ImportCsvSheet onImported={() => void mutate()} />
             </div>
-          ) : null}
+          </div>
+          <SyncStatus updatedAt={updatedAt} />
           {isLoading ? (
             <div className="space-y-3">
               <Skeleton className="h-10 w-full" />
               <Skeleton className="h-10 w-full" />
               <Skeleton className="h-10 w-full" />
             </div>
+          ) : error ? (
+            <ErrorState
+              title="Erreur de chargement des leads."
+              onRetry={() => void mutate()}
+            />
+          ) : (data?.total || 0) === 0 ? (
+            <EmptyState
+              title="Aucun lead disponible"
+              description="Utilisez 'Creation rapide de lead' ou importez un CSV pour demarrer."
+            />
           ) : (
-            <LeadsTable data={leads} onDataChanged={() => void mutate()} />
+            <LeadsTable
+              data={leads}
+              total={data?.total || 0}
+              page={page}
+              pageSize={pageSize}
+              search={search}
+              status={status}
+              sort={sort}
+              order={order}
+              onSearchChange={(val) => { setSearch(val); setPage(1); }}
+              onStatusChange={(val) => { setStatus(val); setPage(1); }}
+              onPageChange={setPage}
+              onSortChange={(s, o) => { setSort(s); setOrder(o); }}
+              onDataChanged={() => void mutate()}
+            />
           )}
         </div>
       </SidebarInset>

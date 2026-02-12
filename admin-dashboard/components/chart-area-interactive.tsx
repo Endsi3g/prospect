@@ -163,7 +163,7 @@ export default function ChartAreaInteractive({ trend = [] }: ChartAreaInteractiv
           desktop: point.created,
           mobile: point.contacted,
         }))
-        : chartData,
+        : chartData.filter(() => false),
     [trend]
   )
 
@@ -232,7 +232,15 @@ export default function ChartAreaInteractive({ trend = [] }: ChartAreaInteractiv
           </Select>
         </CardAction>
       </CardHeader>
+      <div className="px-6 text-xs text-muted-foreground">
+        Legende: Crees (trait plein) | Contactes (trait secondaire)
+      </div>
       <CardContent className="px-2 pt-4 sm:px-6 sm:pt-6">
+        {filteredData.length === 0 ? (
+          <div className="flex h-[250px] items-center justify-center rounded-lg border border-dashed text-sm text-muted-foreground">
+            Aucune donnee de tendance disponible.
+          </div>
+        ) : (
         <ChartContainer
           config={chartConfig}
           className="aspect-auto h-[250px] w-full"
@@ -309,6 +317,7 @@ export default function ChartAreaInteractive({ trend = [] }: ChartAreaInteractiv
             />
           </AreaChart>
         </ChartContainer>
+        )}
       </CardContent>
     </Card>
   )

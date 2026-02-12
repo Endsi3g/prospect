@@ -2,6 +2,8 @@
 
 import * as React from "react"
 import { type Icon } from "@tabler/icons-react"
+import Link from "next/link"
+import { usePathname } from "next/navigation"
 
 import {
   SidebarGroup,
@@ -22,14 +24,16 @@ export function NavSecondary({
     onClick?: () => void
   }[]
 } & React.ComponentPropsWithoutRef<typeof SidebarGroup>) {
+  const pathname = usePathname()
+
   return (
     <SidebarGroup {...props}>
       <SidebarGroupContent>
         <SidebarMenu>
           {items.map((item) => (
             <SidebarMenuItem key={item.title}>
-              <SidebarMenuButton asChild>
-                <a
+              <SidebarMenuButton asChild isActive={item.url !== "#" && pathname === item.url}>
+                <Link
                   href={item.url}
                   onClick={(event) => {
                     if (!item.onClick) return
@@ -41,7 +45,7 @@ export function NavSecondary({
                 >
                   <item.icon />
                   <span>{item.title}</span>
-                </a>
+                </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
           ))}

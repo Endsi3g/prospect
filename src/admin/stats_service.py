@@ -152,20 +152,57 @@ def compute_core_funnel_stats(db: Session, qualification_threshold: float) -> Di
     }
 
 
-def list_leads(db: Session, page: int, page_size: int) -> Dict[str, Any]:
+def list_leads(
+    db: Session,
+    page: int,
+    page_size: int,
+    search: str | None = None,
+    status_filter: str | None = None,
+    sort_by: str = "created_at",
+    sort_desc: bool = True,
+) -> Dict[str, Any]:
     # Validate and clamp page_size
     page_size = max(1, min(page_size, 100))
     
-    total = db.query(DBLead).count()
+    query = db.query(DBLead).options(joinedload(DBLead.company))
+
+    # Apply Search
+    if search and search.strip():
+        term = f"%{search.strip()}%"
+        query = query.filter(
+            func.lower(DBLead.first_name).like(term.lower()) |
+            func.lower(DBLead.last_name).like(term.lower()) |
+            func.lower(DBLead.email).like(term.lower())
+        )
+
+    # Apply Status Filter
+    if status_filter and status_filter.strip():
+        # Try to match enum status
+        try:
+            status_enum = LeadStatus(status_filter)
+            query = query.filter(DBLead.status == status_enum)
+        except ValueError:
+            pass # Ignore invalid status
+
+    # Apply Sorting
+    sort_column = DBLead.created_at # Default
+    if sort_by == "total_score":
+        sort_column = DBLead.total_score
+    elif sort_by == "last_scored_at":
+        sort_column = DBLead.last_scored_at
+    elif sort_by == "updated_at":
+        sort_column = DBLead.updated_at
+    
+    if sort_desc:
+        query = query.order_by(sort_column.desc())
+    else:
+        query = query.order_by(sort_column.asc())
+
+    # Pagination
+    total = query.count()
     offset = max(page - 1, 0) * page_size
-    rows = (
-        db.query(DBLead)
-        .options(joinedload(DBLead.company))
-        .order_by(DBLead.created_at.desc())
-        .offset(offset)
-        .limit(page_size)
-        .all()
-    )
+    rows = query.offset(offset).limit(page_size).all()
+
     items = []
     for lead in rows:
         company_name = lead.company.name if lead.company else None

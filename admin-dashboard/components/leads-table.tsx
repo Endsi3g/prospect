@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import Link from "next/link"
 import { IconDotsVertical, IconFolderPlus, IconPlus, IconRocket } from "@tabler/icons-react"
 import { toast } from "sonner"
 
@@ -14,6 +15,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
 import {
   Table,
@@ -44,28 +52,42 @@ function scoreClass(score: number): string {
   return "text-muted-foreground"
 }
 
+function SortIcon({ column, sort, order }: { column: string; sort: string; order: string }) {
+  if (sort !== column) return null
+  return order === "asc" ? <span className="ml-1">^</span> : <span className="ml-1">v</span>
+}
+
 export function LeadsTable({
   data,
+  total,
+  page,
+  pageSize,
+  search,
+  status,
+  sort,
+  order,
+  onSearchChange,
+  onStatusChange,
+  onPageChange,
+  onSortChange,
   onDataChanged,
 }: {
   data: Lead[]
+  total: number
+  page: number
+  pageSize: number
+  search: string
+  status: string
+  sort: string
+  order: string
+  onSearchChange: (value: string) => void
+  onStatusChange: (value: string) => void
+  onPageChange: (page: number) => void
+  onSortChange: (sort: string, order: string) => void
   onDataChanged?: () => void
 }) {
   const { openProjectForm } = useModalSystem()
-  const [filter, setFilter] = React.useState("")
-
-  const filteredData = React.useMemo(() => {
-    const cleanFilter = filter.trim().toLowerCase()
-    if (!cleanFilter) return data
-    return data.filter((lead) => {
-      return (
-        lead.name.toLowerCase().includes(cleanFilter) ||
-        lead.email.toLowerCase().includes(cleanFilter) ||
-        lead.company.name.toLowerCase().includes(cleanFilter) ||
-        lead.segment.toLowerCase().includes(cleanFilter)
-      )
-    })
-  }, [data, filter])
+  const maxPage = Math.ceil(total / pageSize) || 1
 
   async function createTaskFromLead(lead: Lead) {
     const payload = {
@@ -104,35 +126,77 @@ export function LeadsTable({
     })
   }
 
+  const handleSort = (column: string) => {
+    if (sort === column) {
+      onSortChange(column, order === "asc" ? "desc" : "asc")
+    } else {
+      onSortChange(column, "asc")
+    }
+  }
+
+
+
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <Input
-          placeholder="Filtrer les leads..."
-          value={filter}
-          onChange={(event) => setFilter(event.target.value)}
-          className="sm:max-w-md"
-        />
-        <p className="text-sm text-muted-foreground">{filteredData.length} lead(s)</p>
+        <div className="flex items-center gap-2 flex-1">
+          <Input
+            placeholder="Rechercher..."
+            value={search}
+            onChange={(event) => onSearchChange(event.target.value)}
+            className="sm:max-w-xs"
+          />
+          <Select value={status} onValueChange={onStatusChange}>
+            <SelectTrigger className="w-[180px]">
+              <SelectValue placeholder="Statut" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">Tous les statuts</SelectItem>
+              <SelectItem value="NEW">New</SelectItem>
+              <SelectItem value="CONTACTED">Contacted</SelectItem>
+              <SelectItem value="INTERESTED">Interested</SelectItem>
+              <SelectItem value="CONVERTED">Converted</SelectItem>
+              <SelectItem value="LOST">Lost</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <p className="text-sm text-muted-foreground">{total} lead(s)</p>
       </div>
 
       <div className="rounded-lg border">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Lead</TableHead>
+              <TableHead
+                className="cursor-pointer hover:bg-muted/50"
+                onClick={() => handleSort("name")}
+              >
+                Lead <SortIcon column="name" sort={sort} order={order} />
+              </TableHead>
               <TableHead>Entreprise</TableHead>
-              <TableHead>Statut</TableHead>
-              <TableHead>Score</TableHead>
+              <TableHead
+                className="cursor-pointer hover:bg-muted/50"
+                onClick={() => handleSort("status")}
+              >
+                Statut <SortIcon column="status" sort={sort} order={order} />
+              </TableHead>
+              <TableHead
+                className="cursor-pointer hover:bg-muted/50"
+                onClick={() => handleSort("total_score")}
+              >
+                Score <SortIcon column="total_score" sort={sort} order={order} />
+              </TableHead>
               <TableHead>Segment</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredData.map((lead) => (
+            {data.map((lead) => (
               <TableRow key={lead.id}>
                 <TableCell>
-                  <div className="font-medium">{lead.name}</div>
+                  <Link href={`/leads/${lead.id}`} className="block hover:underline">
+                    <div className="font-medium">{lead.name}</div>
+                  </Link>
                   <div className="text-xs text-muted-foreground">{lead.email}</div>
                 </TableCell>
                 <TableCell>{lead.company.name}</TableCell>
@@ -160,7 +224,7 @@ export function LeadsTable({
                         Creer une tache
                       </DropdownMenuItem>
                       <DropdownMenuSeparator />
-                      <DropdownMenuItem onClick={() => toast.info("Flow audit disponible prochainement")}> 
+                      <DropdownMenuItem onClick={() => toast.info("Flow audit disponible prochainement")}>
                         <IconRocket className="size-4" />
                         Generer un audit
                       </DropdownMenuItem>
@@ -169,7 +233,7 @@ export function LeadsTable({
                 </TableCell>
               </TableRow>
             ))}
-            {filteredData.length === 0 ? (
+            {data.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={6} className="py-8 text-center text-sm text-muted-foreground">
                   Aucun lead ne correspond a votre recherche.
@@ -179,6 +243,29 @@ export function LeadsTable({
           </TableBody>
         </Table>
       </div>
+
+      <div className="flex items-center justify-end space-x-2 py-2">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => onPageChange(page - 1)}
+          disabled={page <= 1}
+        >
+          Precedent
+        </Button>
+        <div className="flex-1 text-center text-sm text-muted-foreground">
+          Page {page} sur {maxPage}
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => onPageChange(page + 1)}
+          disabled={page >= maxPage}
+        >
+          Suivant
+        </Button>
+      </div>
     </div>
   )
 }
+
