@@ -1,18 +1,20 @@
 from __future__ import annotations
 
+import csv
 import json
 import os
 import secrets
 import time
 import uuid
-from datetime import datetime, time as datetime_time
+from datetime import datetime, time as datetime_time, timedelta
+from io import StringIO
 from pathlib import Path
 from threading import Lock
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, FastAPI, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse, Response
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, EmailStr, Field
@@ -21,9 +23,28 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 from starlette.requests import Request
 
-from ..core.database import Base, engine, get_db
+from ..core.database import Base, SessionLocal, engine, get_db
 from ..core.db_migrations import ensure_sqlite_schema_compatibility
-from ..core.db_models import DBAdminSetting, DBCompany, DBLead, DBProject, DBTask
+from ..core.db_models import (
+    DBAccountProfile,
+    DBAdminRole,
+    DBAdminSetting,
+    DBAdminUser,
+    DBAdminUserRole,
+    DBAuditLog,
+    DBBillingInvoice,
+    DBBillingProfile,
+    DBCompany,
+    DBIntegrationConfig,
+    DBLead,
+    DBNotification,
+    DBNotificationPreference,
+    DBProject,
+    DBReportRun,
+    DBReportSchedule,
+    DBTask,
+    DBWebhookConfig,
+)
 from ..core.logging import configure_logging, get_logger
 from ..core.models import Company, Interaction, Lead, LeadStage, LeadStatus
 from ..scoring.engine import ScoringEngine
@@ -52,11 +73,35 @@ DEFAULT_ADMIN_SETTINGS: dict[str, Any] = {
     "default_page_size": 25,
     "dashboard_refresh_seconds": 30,
     "support_email": "support@example.com",
+    "theme": "system",
+    "default_refresh_mode": "polling",
+    "notifications": {"email": True, "in_app": True},
 }
 
 PROJECT_STATUSES = {"Planning", "In Progress", "On Hold", "Completed", "Cancelled"}
 TASK_STATUSES = {"To Do", "In Progress", "Done"}
 TASK_PRIORITIES = {"Low", "Medium", "High", "Critical"}
+USER_STATUSES = {"active", "invited", "disabled"}
+THEME_OPTIONS = {"light", "dark", "system"}
+REFRESH_MODES = {"manual", "polling"}
+ROLE_LABELS = {
+    "admin": "Administrateur",
+    "manager": "Manager",
+    "sales": "Commercial",
+}
+NOTIFICATION_CHANNELS = {"email", "in_app"}
+NOTIFICATION_EVENT_KEYS = {
+    "lead_created",
+    "lead_updated",
+    "task_created",
+    "task_completed",
+    "project_created",
+    "report_ready",
+    "report_failed",
+    "billing_invoice_due",
+}
+REPORT_FREQUENCIES = {"daily", "weekly", "monthly"}
+REPORT_FORMATS = {"pdf", "csv"}
 
 
 class InMemoryRateLimiter:
@@ -132,6 +177,11 @@ class AdminSettingsPayload(BaseModel):
     default_page_size: int
     dashboard_refresh_seconds: int
     support_email: EmailStr
+    theme: str = "system"
+    default_refresh_mode: str = "polling"
+    notifications: dict[str, bool] = Field(
+        default_factory=lambda: {"email": True, "in_app": True}
+    )
 
 
 class AdminSettingsUpdatePayload(BaseModel):
@@ -141,6 +191,9 @@ class AdminSettingsUpdatePayload(BaseModel):
     default_page_size: int | None = None
     dashboard_refresh_seconds: int | None = None
     support_email: EmailStr | None = None
+    theme: str | None = None
+    default_refresh_mode: str | None = None
+    notifications: dict[str, bool] | None = None
 
 
 class AdminSearchResultItem(BaseModel):
@@ -159,6 +212,113 @@ class AdminHelpPayload(BaseModel):
 
 class AdminDiagnosticsRunRequest(BaseModel):
     auto_fix: bool = False
+
+
+class AdminUserInviteRequest(BaseModel):
+    email: EmailStr
+    display_name: str | None = None
+    roles: list[str] = Field(default_factory=lambda: ["sales"])
+
+
+class AdminUserUpdateRequest(BaseModel):
+    display_name: str | None = None
+    status: str | None = None
+    roles: list[str] | None = None
+
+
+class AdminWebhookCreateRequest(BaseModel):
+    name: str = Field(min_length=1)
+    url: str = Field(min_length=8)
+    events: list[str] = Field(default_factory=list)
+    enabled: bool = True
+
+
+class AdminIntegrationItemPayload(BaseModel):
+    enabled: bool = False
+    config: dict[str, Any] = Field(default_factory=dict)
+
+
+class AdminIntegrationsPayload(BaseModel):
+    providers: dict[str, AdminIntegrationItemPayload] = Field(default_factory=dict)
+
+
+class AdminAccountPayload(BaseModel):
+    full_name: str = ""
+    email: EmailStr
+    title: str = ""
+    locale: str = "fr-FR"
+    timezone: str = "Europe/Paris"
+    preferences: dict[str, Any] = Field(default_factory=dict)
+
+
+class AdminBillingProfilePayload(BaseModel):
+    plan_name: str = "Business"
+    billing_cycle: str = "monthly"
+    status: str = "active"
+    currency: str = "EUR"
+    amount_cents: int = Field(default=9900, ge=0)
+    company_name: str = ""
+    billing_email: EmailStr
+    vat_number: str = ""
+    address_line: str = ""
+    city: str = ""
+    postal_code: str = ""
+    country: str = ""
+    notes: str = ""
+
+
+class AdminBillingInvoiceCreateRequest(BaseModel):
+    invoice_number: str = Field(min_length=3)
+    period_start: str | None = None
+    period_end: str | None = None
+    due_at: str | None = None
+    status: str = "issued"
+    currency: str = "EUR"
+    amount_cents: int = Field(default=0, ge=0)
+    notes: str | None = None
+
+
+class AdminNotificationCreateRequest(BaseModel):
+    event_key: str = Field(min_length=3)
+    title: str = Field(min_length=3)
+    message: str = Field(min_length=3)
+    channel: str = "in_app"
+    entity_type: str | None = None
+    entity_id: str | None = None
+    link_href: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class AdminNotificationMarkReadRequest(BaseModel):
+    ids: list[str] = Field(default_factory=list)
+
+
+class AdminNotificationPreferencesUpdatePayload(BaseModel):
+    channels: dict[str, dict[str, bool]] = Field(default_factory=dict)
+
+
+class AdminReportScheduleCreateRequest(BaseModel):
+    name: str = Field(min_length=3)
+    frequency: str = "weekly"
+    timezone: str = "Europe/Paris"
+    hour_local: int = Field(default=9, ge=0, le=23)
+    minute_local: int = Field(default=0, ge=0, le=59)
+    format: str = "pdf"
+    recipients: list[EmailStr] = Field(default_factory=list)
+    filters: dict[str, Any] = Field(default_factory=dict)
+    enabled: bool = True
+
+
+class AdminReportScheduleUpdateRequest(BaseModel):
+    name: str | None = Field(default=None, min_length=3)
+    frequency: str | None = None
+    timezone: str | None = None
+    hour_local: int | None = Field(default=None, ge=0, le=23)
+    minute_local: int | None = Field(default=None, ge=0, le=59)
+    format: str | None = None
+    recipients: list[EmailStr] | None = None
+    filters: dict[str, Any] | None = None
+    enabled: bool | None = None
 
 
 def _is_production() -> bool:
@@ -304,6 +464,290 @@ def _coerce_task_priority(raw_priority: str | None) -> str:
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         detail=f"Unsupported task priority: {raw_priority}",
     )
+
+
+def _coerce_theme(raw_theme: str | None) -> str:
+    candidate = (raw_theme or "system").strip().lower()
+    if candidate in THEME_OPTIONS:
+        return candidate
+    return "system"
+
+
+def _coerce_refresh_mode(raw_mode: str | None) -> str:
+    candidate = (raw_mode or "polling").strip().lower()
+    if candidate in REFRESH_MODES:
+        return candidate
+    return "polling"
+
+
+def _normalize_notifications(raw_value: Any) -> dict[str, bool]:
+    defaults = dict(DEFAULT_ADMIN_SETTINGS["notifications"])
+    if isinstance(raw_value, dict):
+        for key in ("email", "in_app"):
+            if key in raw_value:
+                defaults[key] = bool(raw_value[key])
+    return defaults
+
+
+def _coerce_user_status(raw_status: str | None) -> str:
+    candidate = (raw_status or "active").strip().lower()
+    if candidate in USER_STATUSES:
+        return candidate
+    raise HTTPException(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        detail=f"Unsupported user status: {raw_status}",
+    )
+
+
+def _coerce_notification_channel(raw_channel: str | None) -> str:
+    candidate = (raw_channel or "in_app").strip().lower()
+    if candidate in NOTIFICATION_CHANNELS:
+        return candidate
+    raise HTTPException(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        detail=f"Unsupported notification channel: {raw_channel}",
+    )
+
+
+def _coerce_notification_event(raw_event: str | None) -> str:
+    candidate = (raw_event or "").strip().lower()
+    if candidate in NOTIFICATION_EVENT_KEYS:
+        return candidate
+    raise HTTPException(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        detail=f"Unsupported notification event key: {raw_event}",
+    )
+
+
+def _coerce_report_frequency(raw_frequency: str | None) -> str:
+    candidate = (raw_frequency or "weekly").strip().lower()
+    if candidate in REPORT_FREQUENCIES:
+        return candidate
+    raise HTTPException(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        detail=f"Unsupported report frequency: {raw_frequency}",
+    )
+
+
+def _coerce_report_format(raw_format: str | None) -> str:
+    candidate = (raw_format or "pdf").strip().lower()
+    if candidate in REPORT_FORMATS:
+        return candidate
+    raise HTTPException(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        detail=f"Unsupported report format: {raw_format}",
+    )
+
+
+def _compute_next_run_at(
+    *,
+    frequency: str,
+    hour_local: int,
+    minute_local: int,
+    reference: datetime | None = None,
+) -> datetime:
+    now = reference or datetime.now()
+    next_run = now.replace(hour=hour_local, minute=minute_local, second=0, microsecond=0)
+    if next_run <= now:
+        if frequency == "daily":
+            next_run = next_run + timedelta(days=1)
+        elif frequency == "weekly":
+            next_run = next_run + timedelta(days=7)
+        else:
+            next_run = next_run + timedelta(days=30)
+    return next_run
+
+
+def _ensure_default_roles(db: Session) -> None:
+    changed = False
+    for role_key, role_label in ROLE_LABELS.items():
+        existing = db.query(DBAdminRole).filter(DBAdminRole.key == role_key).first()
+        if existing:
+            continue
+        db.add(DBAdminRole(key=role_key, label=role_label))
+        changed = True
+    if changed:
+        db.commit()
+
+
+def _serialize_role(role: DBAdminRole) -> dict[str, Any]:
+    return {
+        "id": role.id,
+        "key": role.key,
+        "label": role.label,
+    }
+
+
+def _serialize_user(user: DBAdminUser) -> dict[str, Any]:
+    role_keys = sorted(
+        {
+            link.role.key
+            for link in user.role_links
+            if link.role is not None and getattr(link.role, "key", None)
+        }
+    )
+    return {
+        "id": user.id,
+        "email": user.email,
+        "display_name": user.display_name,
+        "status": user.status,
+        "roles": role_keys,
+        "created_at": user.created_at.isoformat() if user.created_at else None,
+        "updated_at": user.updated_at.isoformat() if user.updated_at else None,
+    }
+
+
+def _serialize_webhook(webhook: DBWebhookConfig) -> dict[str, Any]:
+    return {
+        "id": webhook.id,
+        "name": webhook.name,
+        "url": webhook.url,
+        "events": webhook.events or [],
+        "enabled": bool(webhook.enabled),
+        "created_at": webhook.created_at.isoformat() if webhook.created_at else None,
+        "updated_at": webhook.updated_at.isoformat() if webhook.updated_at else None,
+    }
+
+
+def _serialize_account_profile(profile: DBAccountProfile) -> dict[str, Any]:
+    return {
+        "full_name": profile.full_name or "",
+        "email": profile.email or DEFAULT_ADMIN_SETTINGS["support_email"],
+        "title": profile.title or "",
+        "locale": profile.locale or DEFAULT_ADMIN_SETTINGS["locale"],
+        "timezone": profile.timezone or DEFAULT_ADMIN_SETTINGS["timezone"],
+        "preferences": profile.preferences_json or {},
+        "updated_at": profile.updated_at.isoformat() if profile.updated_at else None,
+    }
+
+
+def _serialize_billing_profile(profile: DBBillingProfile) -> dict[str, Any]:
+    return {
+        "plan_name": profile.plan_name,
+        "billing_cycle": profile.billing_cycle,
+        "status": profile.status,
+        "currency": profile.currency,
+        "amount_cents": int(profile.amount_cents or 0),
+        "company_name": profile.company_name or "",
+        "billing_email": profile.billing_email or DEFAULT_ADMIN_SETTINGS["support_email"],
+        "vat_number": profile.vat_number or "",
+        "address_line": profile.address_line or "",
+        "city": profile.city or "",
+        "postal_code": profile.postal_code or "",
+        "country": profile.country or "",
+        "notes": profile.notes or "",
+        "updated_at": profile.updated_at.isoformat() if profile.updated_at else None,
+    }
+
+
+def _serialize_billing_invoice(invoice: DBBillingInvoice) -> dict[str, Any]:
+    return {
+        "id": invoice.id,
+        "invoice_number": invoice.invoice_number,
+        "period_start": invoice.period_start.isoformat() if invoice.period_start else None,
+        "period_end": invoice.period_end.isoformat() if invoice.period_end else None,
+        "issued_at": invoice.issued_at.isoformat() if invoice.issued_at else None,
+        "due_at": invoice.due_at.isoformat() if invoice.due_at else None,
+        "status": invoice.status,
+        "currency": invoice.currency,
+        "amount_cents": int(invoice.amount_cents or 0),
+        "notes": invoice.notes or "",
+        "created_at": invoice.created_at.isoformat() if invoice.created_at else None,
+    }
+
+
+def _serialize_notification(notification: DBNotification) -> dict[str, Any]:
+    return {
+        "id": notification.id,
+        "event_key": notification.event_key,
+        "title": notification.title,
+        "message": notification.message,
+        "channel": notification.channel,
+        "entity_type": notification.entity_type,
+        "entity_id": notification.entity_id,
+        "link_href": notification.link_href,
+        "is_read": bool(notification.is_read),
+        "sent_at": notification.sent_at.isoformat() if notification.sent_at else None,
+        "metadata": notification.metadata_json or {},
+        "created_at": notification.created_at.isoformat() if notification.created_at else None,
+    }
+
+
+def _serialize_report_schedule(schedule: DBReportSchedule) -> dict[str, Any]:
+    return {
+        "id": schedule.id,
+        "name": schedule.name,
+        "frequency": schedule.frequency,
+        "timezone": schedule.timezone,
+        "hour_local": int(schedule.hour_local),
+        "minute_local": int(schedule.minute_local),
+        "format": schedule.format,
+        "recipients": schedule.recipients_json or [],
+        "filters": schedule.filters_json or {},
+        "enabled": bool(schedule.enabled),
+        "last_run_at": schedule.last_run_at.isoformat() if schedule.last_run_at else None,
+        "next_run_at": schedule.next_run_at.isoformat() if schedule.next_run_at else None,
+        "created_at": schedule.created_at.isoformat() if schedule.created_at else None,
+        "updated_at": schedule.updated_at.isoformat() if schedule.updated_at else None,
+    }
+
+
+def _serialize_report_run(run: DBReportRun) -> dict[str, Any]:
+    return {
+        "id": run.id,
+        "schedule_id": run.schedule_id,
+        "status": run.status,
+        "output_format": run.output_format,
+        "recipient_count": int(run.recipient_count or 0),
+        "started_at": run.started_at.isoformat() if run.started_at else None,
+        "finished_at": run.finished_at.isoformat() if run.finished_at else None,
+        "message": run.message or "",
+        "created_at": run.created_at.isoformat() if run.created_at else None,
+    }
+
+
+def _audit_log(
+    db: Session,
+    *,
+    actor: str,
+    action: str,
+    entity_type: str,
+    entity_id: str | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> None:
+    entry = DBAuditLog(
+        id=str(uuid.uuid4()),
+        actor=actor,
+        action=action,
+        entity_type=entity_type,
+        entity_id=entity_id,
+        metadata_json=metadata or {},
+    )
+    db.add(entry)
+    db.commit()
+
+
+def _upsert_user_roles(db: Session, user: DBAdminUser, role_keys: list[str]) -> None:
+    normalized = {key.strip().lower() for key in role_keys if key and key.strip()}
+    if not normalized:
+        normalized = {"sales"}
+
+    known_roles = (
+        db.query(DBAdminRole)
+        .filter(DBAdminRole.key.in_(sorted(normalized)))
+        .all()
+    )
+    known_keys = {role.key for role in known_roles}
+    missing = sorted(normalized - known_keys)
+    if missing:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Unknown roles: {', '.join(missing)}",
+        )
+
+    db.query(DBAdminUserRole).filter(DBAdminUserRole.user_id == user.id).delete()
+    for role in known_roles:
+        db.add(DBAdminUserRole(user_id=user.id, role_id=role.id))
 
 
 def _db_to_lead(db_lead: DBLead) -> Lead:
@@ -587,8 +1031,24 @@ def _get_stats_payload(db: Session) -> dict[str, Any]:
     )
 
 
-def _get_leads_payload(db: Session, page: int, page_size: int) -> dict[str, Any]:
-    return list_leads(db=db, page=page, page_size=page_size)
+def _get_leads_payload(
+    db: Session,
+    page: int,
+    page_size: int,
+    search: str | None = None,
+    status_filter: str | None = None,
+    sort_by: str = "created_at",
+    sort_desc: bool = True,
+) -> dict[str, Any]:
+    return list_leads(
+        db=db,
+        page=page,
+        page_size=page_size,
+        search=search,
+        status_filter=status_filter,
+        sort_by=sort_by,
+        sort_desc=sort_desc,
+    )
 
 
 def _rescore_payload(db: Session) -> dict[str, Any]:
@@ -683,6 +1143,11 @@ def _get_admin_settings_payload(db: Session) -> dict[str, Any]:
     payload["dashboard_refresh_seconds"] = max(10, min(payload["dashboard_refresh_seconds"], 3600))
 
     payload["support_email"] = str(payload.get("support_email") or DEFAULT_ADMIN_SETTINGS["support_email"])
+    payload["theme"] = _coerce_theme(str(payload.get("theme") or DEFAULT_ADMIN_SETTINGS["theme"]))
+    payload["default_refresh_mode"] = _coerce_refresh_mode(
+        str(payload.get("default_refresh_mode") or DEFAULT_ADMIN_SETTINGS["default_refresh_mode"])
+    )
+    payload["notifications"] = _normalize_notifications(payload.get("notifications"))
     return AdminSettingsPayload(**payload).model_dump()
 
 
@@ -693,6 +1158,11 @@ def _save_admin_settings_payload(db: Session, payload: AdminSettingsPayload) -> 
         10,
         min(int(normalized["dashboard_refresh_seconds"]), 3600),
     )
+    normalized["theme"] = _coerce_theme(normalized.get("theme"))
+    normalized["default_refresh_mode"] = _coerce_refresh_mode(
+        normalized.get("default_refresh_mode")
+    )
+    normalized["notifications"] = _normalize_notifications(normalized.get("notifications"))
 
     for key, value in normalized.items():
         row = db.query(DBAdminSetting).filter(DBAdminSetting.key == key).first()
@@ -863,11 +1333,951 @@ def _help_payload(db: Session) -> dict[str, Any]:
         ],
         links=[
             {"label": "Centre d'aide complet", "href": "/help"},
+            {"label": "Bibliotheque commerciale", "href": "/library"},
+            {"label": "Rapports d'equipe", "href": "/reports"},
+            {"label": "Assistant operations", "href": "/assistant"},
             {"label": "Console backend", "href": "/admin"},
             {"label": "Guide API FastAPI", "href": "https://fastapi.tiangolo.com/"},
         ],
     )
     return payload.model_dump()
+
+
+def _list_roles_payload(db: Session) -> list[dict[str, Any]]:
+    _ensure_default_roles(db)
+    roles = db.query(DBAdminRole).order_by(DBAdminRole.id.asc()).all()
+    return [_serialize_role(role) for role in roles]
+
+
+def _list_users_payload(db: Session) -> list[dict[str, Any]]:
+    _ensure_default_roles(db)
+    users = db.query(DBAdminUser).order_by(DBAdminUser.created_at.desc()).all()
+    return [_serialize_user(user) for user in users]
+
+
+def _invite_user_payload(
+    db: Session,
+    payload: AdminUserInviteRequest,
+    *,
+    actor: str,
+) -> dict[str, Any]:
+    _ensure_default_roles(db)
+
+    existing = db.query(DBAdminUser).filter(DBAdminUser.email == str(payload.email)).first()
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"User already exists for email {payload.email}.",
+        )
+
+    user = DBAdminUser(
+        id=str(uuid.uuid4()),
+        email=str(payload.email),
+        display_name=(payload.display_name or "").strip() or None,
+        status="invited",
+    )
+    db.add(user)
+    db.flush()
+    _upsert_user_roles(db, user, payload.roles)
+    db.commit()
+    db.refresh(user)
+
+    _audit_log(
+        db,
+        actor=actor,
+        action="user_invited",
+        entity_type="admin_user",
+        entity_id=user.id,
+        metadata={"email": user.email, "roles": payload.roles},
+    )
+    return _serialize_user(user)
+
+
+def _update_user_payload(
+    db: Session,
+    user_id: str,
+    payload: AdminUserUpdateRequest,
+    *,
+    actor: str,
+) -> dict[str, Any]:
+    _ensure_default_roles(db)
+    user = db.query(DBAdminUser).filter(DBAdminUser.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
+
+    update_data = payload.model_dump(exclude_unset=True)
+    if "display_name" in update_data:
+        user.display_name = (payload.display_name or "").strip() or None
+    if "status" in update_data:
+        user.status = _coerce_user_status(payload.status)
+    if "roles" in update_data and payload.roles is not None:
+        _upsert_user_roles(db, user, payload.roles)
+
+    db.commit()
+    db.refresh(user)
+    _audit_log(
+        db,
+        actor=actor,
+        action="user_updated",
+        entity_type="admin_user",
+        entity_id=user.id,
+        metadata={"status": user.status, "roles": payload.roles},
+    )
+    return _serialize_user(user)
+
+
+def _list_audit_logs_payload(db: Session, cursor: str | None, limit: int) -> dict[str, Any]:
+    query = db.query(DBAuditLog)
+    if cursor:
+        cursor_date = _parse_datetime_field(cursor, "cursor")
+        if cursor_date is not None:
+            query = query.filter(DBAuditLog.created_at < cursor_date)
+
+    rows = (
+        query.order_by(DBAuditLog.created_at.desc())
+        .limit(max(1, min(limit, 100)))
+        .all()
+    )
+    items = [
+        {
+            "id": row.id,
+            "actor": row.actor,
+            "action": row.action,
+            "entity_type": row.entity_type,
+            "entity_id": row.entity_id,
+            "metadata": row.metadata_json or {},
+            "created_at": row.created_at.isoformat() if row.created_at else None,
+        }
+        for row in rows
+    ]
+    next_cursor = items[-1]["created_at"] if items else None
+    return {"items": items, "next_cursor": next_cursor}
+
+
+def _csv_default_fields(entity: str) -> list[str]:
+    if entity == "leads":
+        return ["id", "email", "first_name", "last_name", "status", "segment", "total_score"]
+    if entity == "tasks":
+        return ["id", "title", "status", "priority", "assigned_to", "lead_id", "due_date"]
+    return ["id", "name", "status", "lead_id", "due_date", "created_at"]
+
+
+def _export_csv_payload(db: Session, *, entity: str, fields: str | None) -> tuple[str, str]:
+    selected_entity = entity.strip().lower()
+    if selected_entity not in {"leads", "tasks", "projects"}:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Unsupported export entity: {entity}",
+        )
+
+    columns = [part.strip() for part in (fields or "").split(",") if part.strip()]
+    if not columns:
+        columns = _csv_default_fields(selected_entity)
+
+    if selected_entity == "leads":
+        rows = db.query(DBLead).order_by(DBLead.created_at.desc()).all()
+        serialized = [
+            {
+                "id": row.id,
+                "email": row.email,
+                "first_name": row.first_name or "",
+                "last_name": row.last_name or "",
+                "status": row.status.value if hasattr(row.status, "value") else str(row.status),
+                "segment": row.segment or "",
+                "total_score": row.total_score or 0,
+                "created_at": row.created_at.isoformat() if row.created_at else "",
+            }
+            for row in rows
+        ]
+    elif selected_entity == "tasks":
+        rows = db.query(DBTask).order_by(DBTask.created_at.desc()).all()
+        serialized = [
+            {
+                "id": row.id,
+                "title": row.title,
+                "status": row.status,
+                "priority": row.priority,
+                "assigned_to": row.assigned_to,
+                "lead_id": row.lead_id or "",
+                "due_date": row.due_date.isoformat() if row.due_date else "",
+                "created_at": row.created_at.isoformat() if row.created_at else "",
+            }
+            for row in rows
+        ]
+    else:
+        rows = db.query(DBProject).order_by(DBProject.created_at.desc()).all()
+        serialized = [
+            {
+                "id": row.id,
+                "name": row.name,
+                "description": row.description or "",
+                "status": row.status,
+                "lead_id": row.lead_id or "",
+                "due_date": row.due_date.isoformat() if row.due_date else "",
+                "created_at": row.created_at.isoformat() if row.created_at else "",
+            }
+            for row in rows
+        ]
+
+    output = StringIO()
+    writer = csv.DictWriter(output, fieldnames=columns, extrasaction="ignore")
+    writer.writeheader()
+    for row in serialized:
+        writer.writerow({field: row.get(field, "") for field in columns})
+    return output.getvalue(), f"{selected_entity}.csv"
+
+
+def _list_integrations_payload(db: Session) -> dict[str, Any]:
+    rows = db.query(DBIntegrationConfig).order_by(DBIntegrationConfig.key.asc()).all()
+    providers: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        providers[row.key] = {
+            "enabled": bool(row.enabled),
+            "config": row.config_json or {},
+            "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+        }
+    return {"providers": providers}
+
+
+def _save_integrations_payload(
+    db: Session,
+    payload: AdminIntegrationsPayload,
+    *,
+    actor: str,
+) -> dict[str, Any]:
+    for key, value in payload.providers.items():
+        clean_key = key.strip().lower()
+        if not clean_key:
+            continue
+        row = db.query(DBIntegrationConfig).filter(DBIntegrationConfig.key == clean_key).first()
+        if not row:
+            row = DBIntegrationConfig(key=clean_key)
+            db.add(row)
+        row.enabled = bool(value.enabled)
+        row.config_json = value.config or {}
+
+    db.commit()
+    _audit_log(
+        db,
+        actor=actor,
+        action="integrations_updated",
+        entity_type="integration",
+        metadata={"providers": sorted(payload.providers.keys())},
+    )
+    return _list_integrations_payload(db)
+
+
+def _list_webhooks_payload(db: Session) -> dict[str, Any]:
+    rows = db.query(DBWebhookConfig).order_by(DBWebhookConfig.created_at.desc()).all()
+    return {"items": [_serialize_webhook(row) for row in rows]}
+
+
+def _create_webhook_payload(
+    db: Session,
+    payload: AdminWebhookCreateRequest,
+    *,
+    actor: str,
+) -> dict[str, Any]:
+    if not payload.url.startswith("http://") and not payload.url.startswith("https://"):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Webhook URL must start with http:// or https://",
+        )
+
+    webhook = DBWebhookConfig(
+        id=str(uuid.uuid4()),
+        name=payload.name.strip(),
+        url=payload.url.strip(),
+        events=[event.strip() for event in payload.events if event.strip()],
+        enabled=bool(payload.enabled),
+    )
+    db.add(webhook)
+    db.commit()
+    db.refresh(webhook)
+    _audit_log(
+        db,
+        actor=actor,
+        action="webhook_created",
+        entity_type="webhook",
+        entity_id=webhook.id,
+        metadata={"name": webhook.name},
+    )
+    return _serialize_webhook(webhook)
+
+
+def _delete_webhook_payload(db: Session, webhook_id: str, *, actor: str) -> dict[str, Any]:
+    webhook = db.query(DBWebhookConfig).filter(DBWebhookConfig.id == webhook_id).first()
+    if not webhook:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Webhook not found.")
+
+    db.delete(webhook)
+    db.commit()
+    _audit_log(
+        db,
+        actor=actor,
+        action="webhook_deleted",
+        entity_type="webhook",
+        entity_id=webhook_id,
+    )
+    return {"deleted": True, "id": webhook_id}
+
+
+def _get_or_create_account_profile(db: Session) -> DBAccountProfile:
+    profile = db.query(DBAccountProfile).filter(DBAccountProfile.key == "primary").first()
+    if profile:
+        return profile
+
+    settings = _get_admin_settings_payload(db)
+    profile = DBAccountProfile(
+        key="primary",
+        full_name="Admin Prospect",
+        email=settings["support_email"],
+        title="Operations Manager",
+        locale=settings["locale"],
+        timezone=settings["timezone"],
+        preferences_json={
+            "density": "comfortable",
+            "keyboard_shortcuts": True,
+            "start_page": "/dashboard",
+        },
+    )
+    db.add(profile)
+    db.commit()
+    db.refresh(profile)
+    return profile
+
+
+def _get_account_payload(db: Session) -> dict[str, Any]:
+    profile = _get_or_create_account_profile(db)
+    return _serialize_account_profile(profile)
+
+
+def _save_account_payload(db: Session, payload: AdminAccountPayload) -> dict[str, Any]:
+    profile = _get_or_create_account_profile(db)
+    profile.full_name = payload.full_name.strip() or profile.full_name
+    profile.email = str(payload.email)
+    profile.title = payload.title.strip()
+    profile.locale = payload.locale.strip() or "fr-FR"
+    profile.timezone = payload.timezone.strip() or "Europe/Paris"
+    profile.preferences_json = payload.preferences or {}
+    db.commit()
+    db.refresh(profile)
+    return _serialize_account_profile(profile)
+
+
+def _get_or_create_billing_profile(db: Session) -> DBBillingProfile:
+    profile = db.query(DBBillingProfile).filter(DBBillingProfile.key == "primary").first()
+    if profile:
+        return profile
+
+    settings = _get_admin_settings_payload(db)
+    profile = DBBillingProfile(
+        key="primary",
+        plan_name="Business",
+        billing_cycle="monthly",
+        status="active",
+        currency="EUR",
+        amount_cents=9900,
+        company_name=settings["organization_name"],
+        billing_email=settings["support_email"],
+        country="France",
+    )
+    db.add(profile)
+    db.commit()
+    db.refresh(profile)
+    return profile
+
+
+def _list_billing_invoices_payload(db: Session, *, limit: int = 50) -> list[dict[str, Any]]:
+    rows = (
+        db.query(DBBillingInvoice)
+        .order_by(DBBillingInvoice.issued_at.desc(), DBBillingInvoice.created_at.desc())
+        .limit(max(1, min(limit, 200)))
+        .all()
+    )
+    return [_serialize_billing_invoice(row) for row in rows]
+
+
+def _get_billing_payload(db: Session) -> dict[str, Any]:
+    profile = _get_or_create_billing_profile(db)
+    invoices = _list_billing_invoices_payload(db, limit=100)
+
+    outstanding_cents = sum(
+        int(item["amount_cents"])
+        for item in invoices
+        if item["status"] in {"issued", "open", "overdue"}
+    )
+    paid_cents = sum(
+        int(item["amount_cents"])
+        for item in invoices
+        if item["status"] == "paid"
+    )
+
+    return {
+        "profile": _serialize_billing_profile(profile),
+        "invoices": invoices,
+        "summary": {
+            "invoice_count": len(invoices),
+            "outstanding_cents": outstanding_cents,
+            "paid_cents": paid_cents,
+        },
+    }
+
+
+def _save_billing_profile_payload(db: Session, payload: AdminBillingProfilePayload) -> dict[str, Any]:
+    profile = _get_or_create_billing_profile(db)
+    profile.plan_name = payload.plan_name.strip() or "Business"
+    profile.billing_cycle = payload.billing_cycle.strip() or "monthly"
+    profile.status = payload.status.strip() or "active"
+    profile.currency = payload.currency.strip().upper() or "EUR"
+    profile.amount_cents = int(payload.amount_cents)
+    profile.company_name = payload.company_name.strip()
+    profile.billing_email = str(payload.billing_email)
+    profile.vat_number = payload.vat_number.strip()
+    profile.address_line = payload.address_line.strip()
+    profile.city = payload.city.strip()
+    profile.postal_code = payload.postal_code.strip()
+    profile.country = payload.country.strip()
+    profile.notes = payload.notes.strip()
+    db.commit()
+    db.refresh(profile)
+    return _serialize_billing_profile(profile)
+
+
+def _create_billing_invoice_payload(
+    db: Session,
+    payload: AdminBillingInvoiceCreateRequest,
+) -> dict[str, Any]:
+    existing = (
+        db.query(DBBillingInvoice)
+        .filter(DBBillingInvoice.invoice_number == payload.invoice_number.strip())
+        .first()
+    )
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Invoice already exists: {payload.invoice_number}",
+        )
+
+    invoice = DBBillingInvoice(
+        id=str(uuid.uuid4()),
+        invoice_number=payload.invoice_number.strip(),
+        period_start=_parse_datetime_field(payload.period_start, "period_start"),
+        period_end=_parse_datetime_field(payload.period_end, "period_end"),
+        due_at=_parse_datetime_field(payload.due_at, "due_at"),
+        status=payload.status.strip() or "issued",
+        currency=payload.currency.strip().upper() or "EUR",
+        amount_cents=int(payload.amount_cents),
+        notes=(payload.notes or "").strip() or None,
+    )
+    db.add(invoice)
+    db.commit()
+    db.refresh(invoice)
+    return _serialize_billing_invoice(invoice)
+
+
+def _default_notification_channels() -> dict[str, dict[str, bool]]:
+    events = sorted(NOTIFICATION_EVENT_KEYS)
+    return {
+        "in_app": {event: True for event in events},
+        "email": {event: event in {"report_ready", "report_failed", "billing_invoice_due"} for event in events},
+    }
+
+
+def _seed_notification_preferences(db: Session) -> None:
+    defaults = _default_notification_channels()
+    changed = False
+    for channel, events in defaults.items():
+        for event_key, enabled in events.items():
+            row = (
+                db.query(DBNotificationPreference)
+                .filter(
+                    DBNotificationPreference.channel == channel,
+                    DBNotificationPreference.event_key == event_key,
+                )
+                .first()
+            )
+            if row:
+                continue
+            db.add(
+                DBNotificationPreference(
+                    channel=channel,
+                    event_key=event_key,
+                    enabled=bool(enabled),
+                )
+            )
+            changed = True
+    if changed:
+        db.commit()
+
+
+def _list_notification_preferences_payload(db: Session) -> dict[str, Any]:
+    _seed_notification_preferences(db)
+    channels = _default_notification_channels()
+    rows = db.query(DBNotificationPreference).all()
+    for row in rows:
+        channels.setdefault(row.channel, {})
+        channels[row.channel][row.event_key] = bool(row.enabled)
+    return {"channels": channels}
+
+
+def _save_notification_preferences_payload(
+    db: Session,
+    payload: AdminNotificationPreferencesUpdatePayload,
+) -> dict[str, Any]:
+    _seed_notification_preferences(db)
+    for channel, events in payload.channels.items():
+        clean_channel = _coerce_notification_channel(channel)
+        for event_key, enabled in events.items():
+            clean_event_key = _coerce_notification_event(event_key)
+            row = (
+                db.query(DBNotificationPreference)
+                .filter(
+                    DBNotificationPreference.channel == clean_channel,
+                    DBNotificationPreference.event_key == clean_event_key,
+                )
+                .first()
+            )
+            if not row:
+                row = DBNotificationPreference(
+                    channel=clean_channel,
+                    event_key=clean_event_key,
+                )
+                db.add(row)
+            row.enabled = bool(enabled)
+    db.commit()
+    return _list_notification_preferences_payload(db)
+
+
+def _is_notification_enabled(db: Session, *, channel: str, event_key: str) -> bool:
+    _seed_notification_preferences(db)
+    row = (
+        db.query(DBNotificationPreference)
+        .filter(
+            DBNotificationPreference.channel == channel,
+            DBNotificationPreference.event_key == event_key,
+        )
+        .first()
+    )
+    if not row:
+        return True
+    return bool(row.enabled)
+
+
+def _send_notification_email(subject: str, message: str, recipient: str) -> None:
+    # Local fallback: only persist notifications when SMTP is not configured.
+    smtp_host = os.getenv("SMTP_HOST")
+    if not smtp_host:
+        return
+
+    import smtplib
+    from email.message import EmailMessage
+
+    smtp_port = int(os.getenv("SMTP_PORT", "587"))
+    smtp_user = os.getenv("SMTP_USERNAME")
+    smtp_pass = os.getenv("SMTP_PASSWORD", "")
+    smtp_from = os.getenv("SMTP_FROM", "noreply@prospect.local")
+    smtp_tls = os.getenv("SMTP_USE_TLS", "1").strip().lower() not in {"0", "false", "no"}
+
+    email = EmailMessage()
+    email["Subject"] = subject
+    email["From"] = smtp_from
+    email["To"] = recipient
+    email.set_content(message)
+
+    with smtplib.SMTP(smtp_host, smtp_port, timeout=10) as smtp:
+        if smtp_tls:
+            smtp.starttls()
+        if smtp_user:
+            smtp.login(smtp_user, smtp_pass)
+        smtp.send_message(email)
+
+
+def _create_notification_payload(
+    db: Session,
+    payload: AdminNotificationCreateRequest,
+) -> list[dict[str, Any]]:
+    event_key = _coerce_notification_event(payload.event_key)
+    channel = _coerce_notification_channel(payload.channel)
+    channels = [channel] if channel != "in_app" else ["in_app"]
+
+    created_rows: list[DBNotification] = []
+    for selected_channel in channels:
+        if not _is_notification_enabled(db, channel=selected_channel, event_key=event_key):
+            continue
+        row = DBNotification(
+            id=str(uuid.uuid4()),
+            event_key=event_key,
+            title=payload.title.strip(),
+            message=payload.message.strip(),
+            channel=selected_channel,
+            entity_type=(payload.entity_type or "").strip() or None,
+            entity_id=(payload.entity_id or "").strip() or None,
+            link_href=(payload.link_href or "").strip() or None,
+            metadata_json=payload.metadata or {},
+            sent_at=datetime.now() if selected_channel == "email" else None,
+        )
+        db.add(row)
+        created_rows.append(row)
+    db.commit()
+    for row in created_rows:
+        db.refresh(row)
+
+    for row in created_rows:
+        if row.channel != "email":
+            continue
+        try:
+            account = _get_account_payload(db)
+            _send_notification_email(row.title, row.message, account["email"])
+            row.sent_at = datetime.now()
+        except Exception as exc:  # pragma: no cover - SMTP can be unavailable in local test env
+            logger.warning("Unable to send email notification.", extra={"error": str(exc)})
+    db.commit()
+    return [_serialize_notification(row) for row in created_rows]
+
+
+def _list_notifications_payload(
+    db: Session,
+    *,
+    limit: int,
+    cursor: str | None,
+    channel: str | None,
+    event_key: str | None,
+    only_unread: bool,
+) -> dict[str, Any]:
+    query = db.query(DBNotification)
+    if cursor:
+        cursor_date = _parse_datetime_field(cursor, "cursor")
+        if cursor_date is not None:
+            query = query.filter(DBNotification.created_at < cursor_date)
+    if channel:
+        query = query.filter(DBNotification.channel == _coerce_notification_channel(channel))
+    if event_key:
+        query = query.filter(DBNotification.event_key == _coerce_notification_event(event_key))
+    if only_unread:
+        query = query.filter(DBNotification.is_read.is_(False))
+
+    rows = (
+        query.order_by(DBNotification.created_at.desc())
+        .limit(max(1, min(limit, 100)))
+        .all()
+    )
+    unread_count = db.query(DBNotification).filter(DBNotification.is_read.is_(False)).count()
+    items = [_serialize_notification(row) for row in rows]
+    return {
+        "items": items,
+        "unread_count": unread_count,
+        "next_cursor": items[-1]["created_at"] if items else None,
+    }
+
+
+def _mark_notifications_read_payload(db: Session, notification_ids: list[str]) -> dict[str, Any]:
+    clean_ids = sorted({item.strip() for item in notification_ids if item and item.strip()})
+    if not clean_ids:
+        return {"updated": 0}
+
+    rows = db.query(DBNotification).filter(DBNotification.id.in_(clean_ids)).all()
+    updated = 0
+    for row in rows:
+        if row.is_read:
+            continue
+        row.is_read = True
+        updated += 1
+    db.commit()
+    return {"updated": updated}
+
+
+def _mark_all_notifications_read_payload(db: Session) -> dict[str, Any]:
+    rows = db.query(DBNotification).filter(DBNotification.is_read.is_(False)).all()
+    updated = 0
+    for row in rows:
+        row.is_read = True
+        updated += 1
+    db.commit()
+    return {"updated": updated}
+
+
+def _build_report_snapshot(db: Session) -> dict[str, Any]:
+    stats = _get_stats_payload(db)
+    analytics = _get_analytics_payload(db)
+    return {
+        "stats": stats,
+        "analytics": analytics,
+    }
+
+
+def _pdf_escape(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+
+
+def _build_simple_pdf(title: str, lines: list[str]) -> bytes:
+    content_lines = [title, ""] + lines
+    stream_lines = ["BT", "/F1 11 Tf", "14 TL", "72 790 Td"]
+    for line in content_lines:
+        stream_lines.append(f"({_pdf_escape(line)}) Tj")
+        stream_lines.append("T*")
+    stream_lines.append("ET")
+    stream = "\n".join(stream_lines)
+    stream_bytes = stream.encode("latin-1", errors="ignore")
+
+    objects = [
+        "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n",
+        "2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n",
+        "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>\nendobj\n",
+        f"4 0 obj\n<< /Length {len(stream_bytes)} >>\nstream\n{stream}\nendstream\nendobj\n",
+        "5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n",
+    ]
+
+    payload = bytearray(b"%PDF-1.4\n")
+    offsets = [0]
+    for obj in objects:
+        offsets.append(len(payload))
+        payload.extend(obj.encode("latin-1"))
+    xref_start = len(payload)
+    payload.extend(f"xref\n0 {len(objects) + 1}\n".encode("ascii"))
+    payload.extend(b"0000000000 65535 f \n")
+    for offset in offsets[1:]:
+        payload.extend(f"{offset:010d} 00000 n \n".encode("ascii"))
+    payload.extend(
+        f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\nstartxref\n{xref_start}\n%%EOF".encode("ascii")
+    )
+    return bytes(payload)
+
+
+def _export_pdf_payload(
+    db: Session,
+    *,
+    period: str,
+    dashboard: str,
+) -> tuple[bytes, str]:
+    snapshot = _build_report_snapshot(db)
+    analytics = snapshot["analytics"]
+    stats = snapshot["stats"]
+    now = datetime.now()
+    lines = [
+        f"Periode: {period}",
+        f"Tableau: {dashboard}",
+        f"Genere le: {now.isoformat()}",
+        f"Leads total: {analytics['total_leads']}",
+        f"Nouveaux leads du jour: {analytics['new_leads_today']}",
+        f"Taches completees (%): {analytics['task_completion_rate']}",
+        f"Valeur pipeline estimee: {analytics['pipeline_value']}",
+        f"Leads qualifies: {stats['qualified_total']}",
+        f"Leads contactes: {stats['contacted_total']}",
+        f"Opportunites gagnees: {stats['closed_total']}",
+    ]
+    for key, value in sorted((analytics.get("leads_by_status") or {}).items()):
+        lines.append(f"Statut {key}: {value}")
+
+    file_name = f"report-{dashboard}-{now.strftime('%Y%m%d-%H%M%S')}.pdf"
+    return _build_simple_pdf("Rapport Prospect", lines), file_name
+
+
+def _emit_event_notification(
+    db: Session,
+    *,
+    event_key: str,
+    title: str,
+    message: str,
+    entity_type: str | None = None,
+    entity_id: str | None = None,
+    link_href: str | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> None:
+    for channel in ("in_app", "email"):
+        payload = AdminNotificationCreateRequest(
+            event_key=event_key,
+            title=title,
+            message=message,
+            channel=channel,
+            entity_type=entity_type,
+            entity_id=entity_id,
+            link_href=link_href,
+            metadata=metadata or {},
+        )
+        _create_notification_payload(db, payload)
+
+
+def _list_report_schedules_payload(db: Session) -> dict[str, Any]:
+    rows = db.query(DBReportSchedule).order_by(DBReportSchedule.created_at.desc()).all()
+    return {"items": [_serialize_report_schedule(row) for row in rows]}
+
+
+def _create_report_schedule_payload(
+    db: Session,
+    payload: AdminReportScheduleCreateRequest,
+) -> dict[str, Any]:
+    frequency = _coerce_report_frequency(payload.frequency)
+    export_format = _coerce_report_format(payload.format)
+    schedule = DBReportSchedule(
+        id=str(uuid.uuid4()),
+        name=payload.name.strip(),
+        frequency=frequency,
+        timezone=payload.timezone.strip() or "Europe/Paris",
+        hour_local=int(payload.hour_local),
+        minute_local=int(payload.minute_local),
+        format=export_format,
+        recipients_json=sorted({str(item).strip().lower() for item in payload.recipients if str(item).strip()}),
+        filters_json=payload.filters or {},
+        enabled=bool(payload.enabled),
+        next_run_at=_compute_next_run_at(
+            frequency=frequency,
+            hour_local=int(payload.hour_local),
+            minute_local=int(payload.minute_local),
+        ),
+    )
+    db.add(schedule)
+    db.commit()
+    db.refresh(schedule)
+    return _serialize_report_schedule(schedule)
+
+
+def _update_report_schedule_payload(
+    db: Session,
+    schedule_id: str,
+    payload: AdminReportScheduleUpdateRequest,
+) -> dict[str, Any]:
+    schedule = db.query(DBReportSchedule).filter(DBReportSchedule.id == schedule_id).first()
+    if not schedule:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Report schedule not found.")
+
+    update_data = payload.model_dump(exclude_unset=True)
+    if "name" in update_data and payload.name is not None:
+        schedule.name = payload.name.strip()
+    if "frequency" in update_data and payload.frequency is not None:
+        schedule.frequency = _coerce_report_frequency(payload.frequency)
+    if "timezone" in update_data and payload.timezone is not None:
+        schedule.timezone = payload.timezone.strip() or "Europe/Paris"
+    if "hour_local" in update_data and payload.hour_local is not None:
+        schedule.hour_local = int(payload.hour_local)
+    if "minute_local" in update_data and payload.minute_local is not None:
+        schedule.minute_local = int(payload.minute_local)
+    if "format" in update_data and payload.format is not None:
+        schedule.format = _coerce_report_format(payload.format)
+    if "recipients" in update_data and payload.recipients is not None:
+        schedule.recipients_json = sorted(
+            {str(item).strip().lower() for item in payload.recipients if str(item).strip()}
+        )
+    if "filters" in update_data and payload.filters is not None:
+        schedule.filters_json = payload.filters or {}
+    if "enabled" in update_data and payload.enabled is not None:
+        schedule.enabled = bool(payload.enabled)
+
+    schedule.next_run_at = _compute_next_run_at(
+        frequency=schedule.frequency,
+        hour_local=int(schedule.hour_local),
+        minute_local=int(schedule.minute_local),
+    )
+    db.commit()
+    db.refresh(schedule)
+    return _serialize_report_schedule(schedule)
+
+
+def _delete_report_schedule_payload(db: Session, schedule_id: str) -> dict[str, Any]:
+    schedule = db.query(DBReportSchedule).filter(DBReportSchedule.id == schedule_id).first()
+    if not schedule:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Report schedule not found.")
+    db.delete(schedule)
+    db.commit()
+    return {"deleted": True, "id": schedule_id}
+
+
+def _execute_report_schedule_payload(
+    db: Session,
+    schedule: DBReportSchedule,
+) -> dict[str, Any]:
+    started_at = datetime.now()
+    run = DBReportRun(
+        id=str(uuid.uuid4()),
+        schedule_id=schedule.id,
+        status="running",
+        output_format=schedule.format,
+        recipient_count=len(schedule.recipients_json or []),
+        started_at=started_at,
+    )
+    db.add(run)
+    db.commit()
+    db.refresh(run)
+
+    try:
+        if schedule.format == "csv":
+            _export_csv_payload(db, entity="leads", fields=None)
+            message = "Rapport CSV genere."
+        else:
+            _export_pdf_payload(db, period="scheduled", dashboard="operations")
+            message = "Rapport PDF genere."
+
+        run.status = "success"
+        run.message = message
+        schedule.last_run_at = started_at
+        schedule.next_run_at = _compute_next_run_at(
+            frequency=schedule.frequency,
+            hour_local=int(schedule.hour_local),
+            minute_local=int(schedule.minute_local),
+            reference=started_at + timedelta(minutes=1),
+        )
+        _emit_event_notification(
+            db,
+            event_key="report_ready",
+            title="Rapport planifie pret",
+            message=f"{schedule.name} a ete genere avec succes.",
+            entity_type="report_schedule",
+            entity_id=schedule.id,
+            link_href="/reports",
+            metadata={"schedule_id": schedule.id, "run_id": run.id},
+        )
+    except Exception as exc:  # pragma: no cover - protective fallback
+        run.status = "failed"
+        run.message = str(exc)
+        _emit_event_notification(
+            db,
+            event_key="report_failed",
+            title="Echec de rapport planifie",
+            message=f"{schedule.name} a echoue: {exc}",
+            entity_type="report_schedule",
+            entity_id=schedule.id,
+            link_href="/reports",
+            metadata={"schedule_id": schedule.id, "run_id": run.id},
+        )
+
+    run.finished_at = datetime.now()
+    db.commit()
+    db.refresh(run)
+    return _serialize_report_run(run)
+
+
+def _run_due_report_schedules_payload(db: Session) -> dict[str, Any]:
+    now = datetime.now()
+    due_rows = (
+        db.query(DBReportSchedule)
+        .filter(
+            DBReportSchedule.enabled.is_(True),
+            DBReportSchedule.next_run_at.is_not(None),
+            DBReportSchedule.next_run_at <= now,
+        )
+        .order_by(DBReportSchedule.next_run_at.asc())
+        .limit(25)
+        .all()
+    )
+    executed = [_execute_report_schedule_payload(db, row) for row in due_rows]
+    return {"executed": len(executed), "items": executed}
+
+
+def _list_report_runs_payload(
+    db: Session,
+    *,
+    schedule_id: str | None,
+    limit: int,
+) -> dict[str, Any]:
+    query = db.query(DBReportRun)
+    if schedule_id:
+        query = query.filter(DBReportRun.schedule_id == schedule_id)
+    rows = (
+        query.order_by(DBReportRun.created_at.desc())
+        .limit(max(1, min(limit, 200)))
+        .all()
+    )
+    return {"items": [_serialize_report_run(row) for row in rows]}
 
 
 def _parse_import_mapping(mapping_json: str | None) -> dict[str, str] | None:
@@ -935,6 +2345,16 @@ def create_app() -> FastAPI:
             },
         )
 
+    @app.on_event("startup")
+    def run_due_report_schedules_on_startup() -> None:
+        db = SessionLocal()
+        try:
+            _run_due_report_schedules_payload(db)
+        except Exception as exc:  # pragma: no cover - defensive startup fallback
+            logger.warning("Unable to run due report schedules at startup.", extra={"error": str(exc)})
+        finally:
+            db.close()
+
     @admin_v1.get("/stats")
     def get_stats_v1(db: Session = Depends(get_db)) -> dict[str, Any]:
         return _get_stats_payload(db)
@@ -944,22 +2364,126 @@ def create_app() -> FastAPI:
         db: Session = Depends(get_db),
         page: int = Query(default=1, ge=1),
         page_size: int = Query(default=25, ge=1, le=100),
+        q: str | None = Query(default=None),
+        status: str | None = Query(default=None),
+        sort: str = Query(default="created_at"),
+        order: str = Query(default="desc"),
     ) -> dict[str, Any]:
-        return _get_leads_payload(db, page=page, page_size=page_size)
+        sort_desc = order.lower() == "desc"
+        return _get_leads_payload(
+            db, 
+            page=page, 
+            page_size=page_size,
+            search=q,
+            status_filter=status,
+            sort_by=sort,
+            sort_desc=sort_desc
+        )
+
+    @admin_v1.get("/leads/{lead_id}")
+    def get_lead_v1(
+        lead_id: str,
+        db: Session = Depends(get_db),
+    ) -> Lead:
+        db_lead = db.query(DBLead).filter(DBLead.id == lead_id).first()
+        if not db_lead:
+            raise HTTPException(status_code=404, detail="Lead not found")
+        return _db_to_lead(db_lead)
+
+    @admin_v1.patch("/leads/{lead_id}")
+    def update_lead_v1(
+        lead_id: str,
+        payload: dict[str, Any],
+        db: Session = Depends(get_db),
+    ) -> Lead:
+        db_lead = db.query(DBLead).filter(DBLead.id == lead_id).first()
+        if not db_lead:
+            raise HTTPException(status_code=404, detail="Lead not found")
+        
+        # Simple update logic for now
+        if "status" in payload:
+            db_lead.status = _coerce_lead_status(payload["status"])
+        if "segment" in payload:
+            db_lead.segment = payload["segment"]
+        
+        try:
+            db.commit()
+            db.refresh(db_lead)
+        except SQLAlchemyError as exc:
+            db.rollback()
+            raise HTTPException(status_code=500, detail=str(exc))
+            
+        return _db_to_lead(db_lead)
+
+    @admin_v1.get("/leads/{lead_id}/tasks")
+    def get_lead_tasks_v1(
+        lead_id: str,
+        db: Session = Depends(get_db),
+    ) -> list[dict[str, Any]]:
+        tasks = db.query(DBTask).filter(DBTask.lead_id == lead_id).order_by(DBTask.created_at.desc()).all()
+        return [_serialize_task(task) for task in tasks]
+
+    @admin_v1.get("/leads/{lead_id}/projects")
+    def get_lead_projects_v1(
+        lead_id: str,
+        db: Session = Depends(get_db),
+    ) -> list[dict[str, Any]]:
+        projects = db.query(DBProject).filter(DBProject.lead_id == lead_id).order_by(DBProject.created_at.desc()).all()
+        return [_serialize_project(project) for project in projects]
+
 
     @admin_v1.post("/leads")
     def create_lead_v1(
         payload: AdminLeadCreateRequest,
+        actor: str = "admin",
         db: Session = Depends(get_db),
     ) -> dict[str, Any]:
-        return _create_lead_payload(db, payload)
+        created = _create_lead_payload(db, payload)
+        _emit_event_notification(
+            db,
+            event_key="lead_created",
+            title="Nouveau lead cree",
+            message=f"{created.get('email')} a ete ajoute au pipeline.",
+            entity_type="lead",
+            entity_id=created.get("id"),
+            link_href=f"/leads/{created.get('id')}",
+            metadata={"email": created.get("email")},
+        )
+        _audit_log(
+            db,
+            actor=actor,
+            action="lead_created",
+            entity_type="lead",
+            entity_id=created.get("id"),
+            metadata={"email": created.get("email")},
+        )
+        return created
 
     @admin_v1.post("/tasks")
     def create_task_v1(
         payload: AdminTaskCreateRequest,
+        actor: str = "admin",
         db: Session = Depends(get_db),
     ) -> dict[str, Any]:
-        return _create_task_payload(db, payload)
+        created = _create_task_payload(db, payload)
+        _emit_event_notification(
+            db,
+            event_key="task_created",
+            title="Nouvelle tache creee",
+            message=f"Tache '{created.get('title')}' ajoutee.",
+            entity_type="task",
+            entity_id=created.get("id"),
+            link_href="/tasks",
+            metadata={"priority": created.get("priority")},
+        )
+        _audit_log(
+            db,
+            actor=actor,
+            action="task_created",
+            entity_type="task",
+            entity_id=created.get("id"),
+        )
+        return created
 
     @admin_v1.get("/tasks")
     def list_tasks_v1(db: Session = Depends(get_db)) -> list[dict[str, Any]]:
@@ -970,20 +2494,49 @@ def create_app() -> FastAPI:
     def update_task_v1(
         task_id: str,
         payload: AdminTaskUpdateRequest,
+        actor: str = "admin",
         db: Session = Depends(get_db),
     ) -> dict[str, Any]:
-        return _update_task_payload(db, task_id, payload)
+        updated = _update_task_payload(db, task_id, payload)
+        _audit_log(
+            db,
+            actor=actor,
+            action="task_updated",
+            entity_type="task",
+            entity_id=task_id,
+        )
+        return updated
 
     @admin_v1.delete("/tasks/{task_id}")
     def delete_task_v1(
         task_id: str,
+        actor: str = "admin",
         db: Session = Depends(get_db),
     ) -> dict[str, Any]:
-        return _delete_task_payload(db, task_id)
+        deleted = _delete_task_payload(db, task_id)
+        _audit_log(
+            db,
+            actor=actor,
+            action="task_deleted",
+            entity_type="task",
+            entity_id=task_id,
+        )
+        return deleted
 
     @admin_v1.post("/rescore")
-    def rescore_leads_v1(db: Session = Depends(get_db)) -> dict[str, Any]:
-        return _rescore_payload(db)
+    def rescore_leads_v1(
+        actor: str = "admin",
+        db: Session = Depends(get_db),
+    ) -> dict[str, Any]:
+        result = _rescore_payload(db)
+        _audit_log(
+            db,
+            actor=actor,
+            action="leads_rescored",
+            entity_type="lead",
+            metadata=result,
+        )
+        return result
 
     @admin_v1.get("/projects")
     def list_projects_v1(db: Session = Depends(get_db)) -> list[dict[str, Any]]:
@@ -993,24 +2546,61 @@ def create_app() -> FastAPI:
     @admin_v1.post("/projects")
     def create_project_v1(
         payload: AdminProjectCreateRequest,
+        actor: str = "admin",
         db: Session = Depends(get_db),
     ) -> dict[str, Any]:
-        return _create_project_payload(db, payload)
+        created = _create_project_payload(db, payload)
+        _emit_event_notification(
+            db,
+            event_key="project_created",
+            title="Nouveau projet cree",
+            message=f"Projet '{created.get('name')}' initialise.",
+            entity_type="project",
+            entity_id=created.get("id"),
+            link_href="/projects",
+            metadata={"status": created.get("status")},
+        )
+        _audit_log(
+            db,
+            actor=actor,
+            action="project_created",
+            entity_type="project",
+            entity_id=created.get("id"),
+        )
+        return created
 
     @admin_v1.patch("/projects/{project_id}")
     def update_project_v1(
         project_id: str,
         payload: AdminProjectUpdateRequest,
+        actor: str = "admin",
         db: Session = Depends(get_db),
     ) -> dict[str, Any]:
-        return _update_project_payload(db, project_id, payload)
+        updated = _update_project_payload(db, project_id, payload)
+        _audit_log(
+            db,
+            actor=actor,
+            action="project_updated",
+            entity_type="project",
+            entity_id=project_id,
+        )
+        return updated
 
     @admin_v1.delete("/projects/{project_id}")
     def delete_project_v1(
         project_id: str,
+        actor: str = "admin",
         db: Session = Depends(get_db),
     ) -> dict[str, Any]:
-        return _delete_project_payload(db, project_id)
+        deleted = _delete_project_payload(db, project_id)
+        _audit_log(
+            db,
+            actor=actor,
+            action="project_deleted",
+            entity_type="project",
+            entity_id=project_id,
+        )
+        return deleted
 
     @admin_v1.get("/analytics")
     def analytics_v1(db: Session = Depends(get_db)) -> dict[str, Any]:
@@ -1023,9 +2613,338 @@ def create_app() -> FastAPI:
     @admin_v1.put("/settings")
     def put_settings_v1(
         payload: AdminSettingsPayload,
+        actor: str = "admin",
         db: Session = Depends(get_db),
     ) -> dict[str, Any]:
-        return _save_admin_settings_payload(db, payload)
+        saved = _save_admin_settings_payload(db, payload)
+        _audit_log(
+            db,
+            actor=actor,
+            action="settings_updated",
+            entity_type="settings",
+            entity_id="global",
+        )
+        return saved
+
+    @admin_v1.get("/account")
+    def get_account_v1(db: Session = Depends(get_db)) -> dict[str, Any]:
+        return _get_account_payload(db)
+
+    @admin_v1.put("/account")
+    def put_account_v1(
+        payload: AdminAccountPayload,
+        actor: str = "admin",
+        db: Session = Depends(get_db),
+    ) -> dict[str, Any]:
+        saved = _save_account_payload(db, payload)
+        _audit_log(
+            db,
+            actor=actor,
+            action="account_updated",
+            entity_type="account",
+            entity_id="primary",
+        )
+        return saved
+
+    @admin_v1.get("/billing")
+    def get_billing_v1(db: Session = Depends(get_db)) -> dict[str, Any]:
+        return _get_billing_payload(db)
+
+    @admin_v1.put("/billing")
+    def put_billing_v1(
+        payload: AdminBillingProfilePayload,
+        actor: str = "admin",
+        db: Session = Depends(get_db),
+    ) -> dict[str, Any]:
+        profile = _save_billing_profile_payload(db, payload)
+        _audit_log(
+            db,
+            actor=actor,
+            action="billing_updated",
+            entity_type="billing_profile",
+            entity_id="primary",
+        )
+        return {"profile": profile, "invoices": _list_billing_invoices_payload(db, limit=100)}
+
+    @admin_v1.post("/billing/invoices")
+    def create_billing_invoice_v1(
+        payload: AdminBillingInvoiceCreateRequest,
+        actor: str = "admin",
+        db: Session = Depends(get_db),
+    ) -> dict[str, Any]:
+        invoice = _create_billing_invoice_payload(db, payload)
+        _audit_log(
+            db,
+            actor=actor,
+            action="billing_invoice_created",
+            entity_type="billing_invoice",
+            entity_id=invoice["id"],
+            metadata={"invoice_number": invoice["invoice_number"]},
+        )
+        _emit_event_notification(
+            db,
+            event_key="billing_invoice_due",
+            title="Nouvelle facture creee",
+            message=f"Facture {invoice['invoice_number']} en statut {invoice['status']}.",
+            entity_type="billing_invoice",
+            entity_id=invoice["id"],
+            link_href="/billing",
+            metadata={"invoice_number": invoice["invoice_number"]},
+        )
+        return invoice
+
+    @admin_v1.get("/notifications")
+    def list_notifications_v1(
+        db: Session = Depends(get_db),
+        cursor: str | None = Query(default=None),
+        limit: int = Query(default=25, ge=1, le=100),
+        channel: str | None = Query(default=None),
+        event_key: str | None = Query(default=None),
+        unread_only: bool = Query(default=False),
+    ) -> dict[str, Any]:
+        return _list_notifications_payload(
+            db,
+            limit=limit,
+            cursor=cursor,
+            channel=channel,
+            event_key=event_key,
+            only_unread=unread_only,
+        )
+
+    @admin_v1.post("/notifications")
+    def create_notification_v1(
+        payload: AdminNotificationCreateRequest,
+        actor: str = "admin",
+        db: Session = Depends(get_db),
+    ) -> dict[str, Any]:
+        created = _create_notification_payload(db, payload)
+        _audit_log(
+            db,
+            actor=actor,
+            action="notification_created",
+            entity_type="notification",
+            metadata={"event_key": payload.event_key, "count": len(created)},
+        )
+        return {"items": created}
+
+    @admin_v1.post("/notifications/mark-read")
+    def mark_notifications_read_v1(
+        payload: AdminNotificationMarkReadRequest,
+        actor: str = "admin",
+        db: Session = Depends(get_db),
+    ) -> dict[str, Any]:
+        result = _mark_notifications_read_payload(db, payload.ids)
+        _audit_log(
+            db,
+            actor=actor,
+            action="notifications_mark_read",
+            entity_type="notification",
+            metadata=result,
+        )
+        return result
+
+    @admin_v1.post("/notifications/mark-all-read")
+    def mark_all_notifications_read_v1(
+        actor: str = "admin",
+        db: Session = Depends(get_db),
+    ) -> dict[str, Any]:
+        result = _mark_all_notifications_read_payload(db)
+        _audit_log(
+            db,
+            actor=actor,
+            action="notifications_mark_all_read",
+            entity_type="notification",
+            metadata=result,
+        )
+        return result
+
+    @admin_v1.get("/notifications/preferences")
+    def get_notification_preferences_v1(db: Session = Depends(get_db)) -> dict[str, Any]:
+        return _list_notification_preferences_payload(db)
+
+    @admin_v1.put("/notifications/preferences")
+    def put_notification_preferences_v1(
+        payload: AdminNotificationPreferencesUpdatePayload,
+        actor: str = "admin",
+        db: Session = Depends(get_db),
+    ) -> dict[str, Any]:
+        saved = _save_notification_preferences_payload(db, payload)
+        _audit_log(
+            db,
+            actor=actor,
+            action="notification_preferences_updated",
+            entity_type="notification_preferences",
+            entity_id="global",
+        )
+        return saved
+
+    @admin_v1.get("/reports/schedules")
+    def list_report_schedules_v1(db: Session = Depends(get_db)) -> dict[str, Any]:
+        _run_due_report_schedules_payload(db)
+        return _list_report_schedules_payload(db)
+
+    @admin_v1.post("/reports/schedules")
+    def create_report_schedule_v1(
+        payload: AdminReportScheduleCreateRequest,
+        actor: str = "admin",
+        db: Session = Depends(get_db),
+    ) -> dict[str, Any]:
+        created = _create_report_schedule_payload(db, payload)
+        _audit_log(
+            db,
+            actor=actor,
+            action="report_schedule_created",
+            entity_type="report_schedule",
+            entity_id=created["id"],
+        )
+        return created
+
+    @admin_v1.patch("/reports/schedules/{schedule_id}")
+    def update_report_schedule_v1(
+        schedule_id: str,
+        payload: AdminReportScheduleUpdateRequest,
+        actor: str = "admin",
+        db: Session = Depends(get_db),
+    ) -> dict[str, Any]:
+        updated = _update_report_schedule_payload(db, schedule_id, payload)
+        _audit_log(
+            db,
+            actor=actor,
+            action="report_schedule_updated",
+            entity_type="report_schedule",
+            entity_id=schedule_id,
+        )
+        return updated
+
+    @admin_v1.delete("/reports/schedules/{schedule_id}")
+    def delete_report_schedule_v1(
+        schedule_id: str,
+        actor: str = "admin",
+        db: Session = Depends(get_db),
+    ) -> dict[str, Any]:
+        deleted = _delete_report_schedule_payload(db, schedule_id)
+        _audit_log(
+            db,
+            actor=actor,
+            action="report_schedule_deleted",
+            entity_type="report_schedule",
+            entity_id=schedule_id,
+        )
+        return deleted
+
+    @admin_v1.get("/reports/schedules/runs")
+    def list_report_runs_v1(
+        db: Session = Depends(get_db),
+        schedule_id: str | None = Query(default=None),
+        limit: int = Query(default=50, ge=1, le=200),
+    ) -> dict[str, Any]:
+        return _list_report_runs_payload(db, schedule_id=schedule_id, limit=limit)
+
+    @admin_v1.post("/reports/schedules/run-due")
+    def run_due_report_schedules_v1(
+        actor: str = "admin",
+        db: Session = Depends(get_db),
+    ) -> dict[str, Any]:
+        result = _run_due_report_schedules_payload(db)
+        _audit_log(
+            db,
+            actor=actor,
+            action="report_schedules_run_due",
+            entity_type="report_schedule",
+            metadata={"executed": result.get("executed", 0)},
+        )
+        return result
+
+    @admin_v1.get("/reports/export/pdf")
+    def export_pdf_v1(
+        db: Session = Depends(get_db),
+        period: str = Query(default="30d"),
+        dashboard: str = Query(default="operations"),
+    ) -> Response:
+        payload, file_name = _export_pdf_payload(db, period=period, dashboard=dashboard)
+        return Response(
+            content=payload,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="{file_name}"'},
+        )
+
+    @admin_v1.get("/roles")
+    def list_roles_v1(db: Session = Depends(get_db)) -> dict[str, Any]:
+        return {"items": _list_roles_payload(db)}
+
+    @admin_v1.get("/users")
+    def list_users_v1(db: Session = Depends(get_db)) -> dict[str, Any]:
+        return {"items": _list_users_payload(db)}
+
+    @admin_v1.post("/users/invite")
+    def invite_user_v1(
+        payload: AdminUserInviteRequest,
+        actor: str = "admin",
+        db: Session = Depends(get_db),
+    ) -> dict[str, Any]:
+        return _invite_user_payload(db, payload, actor=actor)
+
+    @admin_v1.patch("/users/{user_id}")
+    def update_user_v1(
+        user_id: str,
+        payload: AdminUserUpdateRequest,
+        actor: str = "admin",
+        db: Session = Depends(get_db),
+    ) -> dict[str, Any]:
+        return _update_user_payload(db, user_id, payload, actor=actor)
+
+    @admin_v1.get("/audit-log")
+    def list_audit_log_v1(
+        db: Session = Depends(get_db),
+        cursor: str | None = Query(default=None),
+        limit: int = Query(default=25, ge=1, le=100),
+    ) -> dict[str, Any]:
+        return _list_audit_logs_payload(db, cursor=cursor, limit=limit)
+
+    @admin_v1.get("/export/csv", response_class=PlainTextResponse)
+    def export_csv_v1(
+        entity: str = Query(default="leads"),
+        fields: str | None = Query(default=None),
+        db: Session = Depends(get_db),
+    ) -> PlainTextResponse:
+        content, file_name = _export_csv_payload(db, entity=entity, fields=fields)
+        return PlainTextResponse(
+            content,
+            media_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{file_name}"'},
+        )
+
+    @admin_v1.get("/integrations")
+    def integrations_v1(db: Session = Depends(get_db)) -> dict[str, Any]:
+        return _list_integrations_payload(db)
+
+    @admin_v1.put("/integrations")
+    def put_integrations_v1(
+        payload: AdminIntegrationsPayload,
+        actor: str = "admin",
+        db: Session = Depends(get_db),
+    ) -> dict[str, Any]:
+        return _save_integrations_payload(db, payload, actor=actor)
+
+    @admin_v1.get("/webhooks")
+    def list_webhooks_v1(db: Session = Depends(get_db)) -> dict[str, Any]:
+        return _list_webhooks_payload(db)
+
+    @admin_v1.post("/webhooks")
+    def create_webhook_v1(
+        payload: AdminWebhookCreateRequest,
+        actor: str = "admin",
+        db: Session = Depends(get_db),
+    ) -> dict[str, Any]:
+        return _create_webhook_payload(db, payload, actor=actor)
+
+    @admin_v1.delete("/webhooks/{webhook_id}")
+    def delete_webhook_v1(
+        webhook_id: str,
+        actor: str = "admin",
+        db: Session = Depends(get_db),
+    ) -> dict[str, Any]:
+        return _delete_webhook_payload(db, webhook_id, actor=actor)
 
     @admin_v1.get("/search")
     def search_v1(
@@ -1051,6 +2970,7 @@ def create_app() -> FastAPI:
 
     @admin_v1.post("/import/csv/commit")
     async def import_csv_commit_v1(
+        actor: str = "admin",
         db: Session = Depends(get_db),
         file: UploadFile = File(...),
         table: str | None = Form(default=None),
@@ -1058,7 +2978,21 @@ def create_app() -> FastAPI:
     ) -> dict[str, Any]:
         content = await file.read()
         mapping = _parse_import_mapping(mapping_json)
-        return commit_csv_import(db=db, content=content, table=table, mapping=mapping)
+        result = commit_csv_import(db=db, content=content, table=table, mapping=mapping)
+        _audit_log(
+            db,
+            actor=actor,
+            action="csv_import_committed",
+            entity_type="import",
+            metadata={
+                "table": result.get("table"),
+                "processed_rows": result.get("processed_rows"),
+                "created": result.get("created"),
+                "updated": result.get("updated"),
+                "skipped": result.get("skipped"),
+            },
+        )
+        return result
 
     @admin_v1.post("/diagnostics/run")
     def diagnostics_run_v1(

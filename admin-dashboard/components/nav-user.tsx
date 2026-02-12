@@ -1,5 +1,6 @@
 "use client"
 
+import Link from "next/link"
 import {
   IconCreditCard,
   IconDotsVertical,
@@ -84,17 +85,23 @@ export function NavUser({
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuGroup>
-              <DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href="/account">
                 <IconUserCircle />
                 Compte
+                </Link>
               </DropdownMenuItem>
-              <DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href="/billing">
                 <IconCreditCard />
                 Facturation
+                </Link>
               </DropdownMenuItem>
-              <DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href="/notifications">
                 <IconNotification />
                 Notifications
+                </Link>
               </DropdownMenuItem>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />

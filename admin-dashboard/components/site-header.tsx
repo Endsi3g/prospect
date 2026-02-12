@@ -16,7 +16,14 @@ const TITLES: Record<string, string> = {
   "/analytics": "Analytique",
   "/projects": "Projets",
   "/settings": "Parametres",
+  "/settings/team": "Equipe & roles",
   "/help": "Aide",
+  "/library": "Bibliotheque",
+  "/reports": "Rapports",
+  "/assistant": "Assistant",
+  "/account": "Compte",
+  "/billing": "Facturation",
+  "/notifications": "Notifications",
 }
 
 export function SiteHeader() {
