@@ -28,6 +28,7 @@ This project does the following:
 - French dashboard UX improvements (skeleton loading states and connected task actions).
 - Advanced lead search filters (score, tier, heat status, company/industry/location, tags, profile completeness).
 - Advanced web research endpoint with provider routing (`duckduckgo`, `perplexity`, `firecrawl`).
+- **Core Lead Operations**: Manual creation, single delete with confirmation, and bulk deletion capabilities.
 
 ## Installation
 

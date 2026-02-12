@@ -30,14 +30,23 @@
 - Rapports Planifiés:
   - Création/Edition de plannings (`/reports/schedules`)
   - Export PDF/CSV et envoi par email
+- Gestion des Leads (Core):
+  - Création manuelle de lead (Sheet)
+  - Suppression unitaire avec confirmation
+  - Actions en masse (Suppression multiple)
+- Améliorations UI/UX:
+  - Navigation fluide (liens noms leads, breadcrumbs)
+  - Indicateurs de fraîcheur des données
+  - Toasts globaux pour feedback actions
+  - Badges de statut colorés
 
 ## 2. Priorites produit restantes
 
 ### 🚨 CRITIQUE (Audit)
 
-- **Formulaire Lead** : Validation email temps réel + Toast succès.
-- **Navigation Leads** : Rendre le nom cliquable vers détails.
-- **UI** : Fixer contraste dark mode & bannière données périmées.
+- **Formulaire Lead** : Validation email temps réel + Toast succès. (Fait)
+- **Navigation Leads** : Rendre le nom cliquable vers détails. (Fait)
+- **UI** : Fixer contraste dark mode & bannière données périmées. (Fait - Indicateurs ajoutés)
 
 ### 🟠 HAUTE PRIORITÉ
 
@@ -49,7 +58,7 @@
 
 - Ajouter filtres serveur + pagination serveur pour les tâches.
 - Completer analytics avec vues concretes.
-- Ajouter actions bulk leads (export, assignation, ajout campagne).
+- Ajouter actions bulk leads (export, assignation, ajout campagne) -> *Bulk Delete fait*
 
 ## 3. Priorites techniques restantes
 
