@@ -12,7 +12,7 @@ def create_lead(name, status, score):
         "email": f"test-{unique_id}@example.com",
         "first_name": name,
         "last_name": "Test",
-        "company": {"name": f"Company {name}"},
+        "company_name": f"Company {name}",
         "status": status,
         "total_score": score
     }
