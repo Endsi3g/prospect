@@ -8,6 +8,7 @@ import { SiteHeader } from "@/components/site-header"
 import { ErrorState } from "@/components/ui/error-state"
 import { EmptyState } from "@/components/ui/empty-state"
 import { Input } from "@/components/ui/input"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
@@ -30,6 +31,25 @@ type SearchResponse = {
   items: SearchResult[]
 }
 
+type WebResearchItem = {
+  provider: string
+  source: string
+  title: string
+  url: string
+  snippet: string
+  published_at?: string | null
+}
+
+type WebResearchResponse = {
+  query: string
+  provider_selector: string
+  providers_requested: string[]
+  providers_used: string[]
+  total: number
+  items: WebResearchItem[]
+  warnings: string[]
+}
+
 type AuditResponse = {
   items: Array<{
     id: string
@@ -45,6 +65,9 @@ const fetcher = <T,>(path: string) => fetchApi<T>(path)
 
 export default function AssistantPage() {
   const [query, setQuery] = React.useState("")
+  const [webQuery, setWebQuery] = React.useState("")
+  const [webProvider, setWebProvider] = React.useState("auto")
+  const [webLimit, setWebLimit] = React.useState("8")
 
   const { data: audit, error: auditError, isLoading: auditLoading, mutate: mutateAudit } = useSWR<AuditResponse>(
     "/api/v1/admin/audit-log?limit=20",
@@ -53,6 +76,12 @@ export default function AssistantPage() {
 
   const { data: search, error: searchError, isLoading: searchLoading } = useSWR<SearchResponse>(
     query.trim() ? `/api/v1/admin/search?q=${encodeURIComponent(query.trim())}&limit=10` : null,
+    fetcher,
+  )
+  const { data: webResearch, error: webError, isLoading: webLoading } = useSWR<WebResearchResponse>(
+    webQuery.trim()
+      ? `/api/v1/admin/research/web?q=${encodeURIComponent(webQuery.trim())}&provider=${encodeURIComponent(webProvider)}&limit=${encodeURIComponent(webLimit)}`
+      : null,
     fetcher,
   )
 
@@ -104,6 +133,84 @@ export default function AssistantPage() {
                       <p className="text-xs text-muted-foreground">
                         {item.type.toUpperCase()} - {item.subtitle}
                       </p>
+                    </a>
+                  ))}
+                </div>
+              ) : null}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Recherche web avancee</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="grid gap-2 md:grid-cols-3">
+                <Input
+                  placeholder="Sujet web (lead gen, concurrents, signaux marche...)"
+                  value={webQuery}
+                  onChange={(event) => setWebQuery(event.target.value)}
+                  className="md:col-span-2"
+                />
+                <div className="grid grid-cols-2 gap-2">
+                  <Select value={webProvider} onValueChange={setWebProvider}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="auto">Auto</SelectItem>
+                      <SelectItem value="duckduckgo">DuckDuckGo</SelectItem>
+                      <SelectItem value="perplexity">Perplexity</SelectItem>
+                      <SelectItem value="firecrawl">Firecrawl</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select value={webLimit} onValueChange={setWebLimit}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="5">5</SelectItem>
+                      <SelectItem value="8">8</SelectItem>
+                      <SelectItem value="10">10</SelectItem>
+                      <SelectItem value="15">15</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              {webLoading ? <p className="text-sm text-muted-foreground">Recherche web en cours...</p> : null}
+              {webError ? <p className="text-sm text-red-600">Recherche web indisponible.</p> : null}
+              {!webLoading && webResearch && webResearch.items.length === 0 && webQuery.trim() ? (
+                <EmptyState
+                  title="Aucun resultat web"
+                  description="Essayez un autre provider ou un sujet plus precis."
+                  className="min-h-24"
+                />
+              ) : null}
+              {webResearch && webResearch.warnings.length > 0 ? (
+                <div className="rounded-lg border border-amber-300 bg-amber-50 p-3">
+                  <p className="text-xs font-medium text-amber-900">Provider warnings:</p>
+                  <ul className="list-disc pl-5 text-xs text-amber-900">
+                    {webResearch.warnings.map((warning) => (
+                      <li key={warning}>{warning}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+              {webResearch && webResearch.items.length > 0 ? (
+                <div className="space-y-2">
+                  {webResearch.items.map((item, index) => (
+                    <a
+                      key={`${item.provider}:${item.url}:${index}`}
+                      href={item.url || "#"}
+                      target={item.url ? "_blank" : undefined}
+                      rel={item.url ? "noreferrer noopener" : undefined}
+                      className="block rounded-lg border px-3 py-2 hover:bg-accent"
+                    >
+                      <p className="text-sm font-medium">{item.title}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {item.provider.toUpperCase()} - {item.source}
+                      </p>
+                      {item.snippet ? <p className="mt-1 text-xs text-muted-foreground">{item.snippet}</p> : null}
                     </a>
                   ))}
                 </div>

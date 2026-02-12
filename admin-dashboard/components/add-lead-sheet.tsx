@@ -162,9 +162,10 @@ export function AddLeadSheet() {
                   id="firstName"
                   value={form.firstName}
                   onChange={(event) => setField("firstName", event.target.value)}
+                  className={errors.firstName ? "border-red-500 focus-visible:ring-red-500" : ""}
                   required
                 />
-                {errors.firstName ? <p className="text-xs text-red-600">{errors.firstName}</p> : null}
+                {errors.firstName ? <p className="text-xs text-red-600 font-medium">{errors.firstName}</p> : null}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="lastName">Nom</Label>
@@ -172,9 +173,10 @@ export function AddLeadSheet() {
                   id="lastName"
                   value={form.lastName}
                   onChange={(event) => setField("lastName", event.target.value)}
+                  className={errors.lastName ? "border-red-500 focus-visible:ring-red-500" : ""}
                   required
                 />
-                {errors.lastName ? <p className="text-xs text-red-600">{errors.lastName}</p> : null}
+                {errors.lastName ? <p className="text-xs text-red-600 font-medium">{errors.lastName}</p> : null}
               </div>
             </div>
             <div className="space-y-2">
@@ -184,9 +186,15 @@ export function AddLeadSheet() {
                 type="email"
                 value={form.email}
                 onChange={(event) => setField("email", event.target.value)}
+                onBlur={() => {
+                  if (form.email && !validateEmail(form.email)) {
+                    setErrors(prev => ({ ...prev, email: "Format d'email invalide" }))
+                  }
+                }}
+                className={errors.email ? "border-red-500 focus-visible:ring-red-500" : ""}
                 required
               />
-              {errors.email ? <p className="text-xs text-red-600">{errors.email}</p> : null}
+              {errors.email ? <p className="text-xs text-red-600 font-medium">{errors.email}</p> : null}
             </div>
             <div className="space-y-2">
               <Label htmlFor="phone">Telephone</Label>
@@ -195,8 +203,9 @@ export function AddLeadSheet() {
                 value={form.phone}
                 onChange={(event) => setField("phone", event.target.value)}
                 placeholder="+1 (555) 000-0000"
+                className={errors.phone ? "border-red-500 focus-visible:ring-red-500" : ""}
               />
-              {errors.phone ? <p className="text-xs text-red-600">{errors.phone}</p> : null}
+              {errors.phone ? <p className="text-xs text-red-600 font-medium">{errors.phone}</p> : null}
             </div>
             <div className="space-y-2">
               <Label htmlFor="company">Entreprise</Label>
@@ -204,9 +213,10 @@ export function AddLeadSheet() {
                 id="company"
                 value={form.company}
                 onChange={(event) => setField("company", event.target.value)}
+                className={errors.company ? "border-red-500 focus-visible:ring-red-500" : ""}
                 required
               />
-              {errors.company ? <p className="text-xs text-red-600">{errors.company}</p> : null}
+              {errors.company ? <p className="text-xs text-red-600 font-medium">{errors.company}</p> : null}
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">

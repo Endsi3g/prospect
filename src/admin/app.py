@@ -54,6 +54,7 @@ from .diagnostics_service import (
     run_intelligent_diagnostics,
 )
 from .import_service import commit_csv_import, preview_csv_import
+from .research_service import run_web_research
 from .stats_service import compute_core_funnel_stats, list_leads
 
 
@@ -76,6 +77,63 @@ DEFAULT_ADMIN_SETTINGS: dict[str, Any] = {
     "theme": "system",
     "default_refresh_mode": "polling",
     "notifications": {"email": True, "in_app": True},
+}
+
+DEFAULT_INTEGRATION_CATALOG: dict[str, dict[str, Any]] = {
+    "duckduckgo": {
+        "enabled": True,
+        "config": {"region": "us-en", "safe_search": "moderate"},
+        "meta": {
+            "category": "research",
+            "free_tier": "Free (no API key required)",
+            "description": "Open web search fallback for advanced research.",
+        },
+    },
+    "perplexity": {
+        "enabled": False,
+        "config": {
+            "api_key_env": "PERPLEXITY_API_KEY",
+            "model": "sonar",
+            "max_tokens": 550,
+        },
+        "meta": {
+            "category": "research",
+            "free_tier": "Free trial / free credits available depending on account",
+            "description": "AI-powered web research with cited sources.",
+        },
+    },
+    "firecrawl": {
+        "enabled": False,
+        "config": {
+            "api_key_env": "FIRECRAWL_API_KEY",
+            "country": "us",
+            "lang": "en",
+            "formats": ["markdown"],
+        },
+        "meta": {
+            "category": "research",
+            "free_tier": "Free tier available",
+            "description": "Structured crawl and extraction from live web pages.",
+        },
+    },
+    "slack": {
+        "enabled": False,
+        "config": {"webhook": ""},
+        "meta": {
+            "category": "automation",
+            "free_tier": "Free plan available",
+            "description": "Send admin alerts and pipeline events to Slack.",
+        },
+    },
+    "zapier": {
+        "enabled": False,
+        "config": {"zap_id": ""},
+        "meta": {
+            "category": "automation",
+            "free_tier": "Free plan available",
+            "description": "Automate admin workflows with no-code triggers.",
+        },
+    },
 }
 
 PROJECT_STATUSES = {"Planning", "In Progress", "On Hold", "Completed", "Cancelled"}
@@ -1094,6 +1152,22 @@ def _get_leads_payload(
     page_size: int,
     search: str | None = None,
     status_filter: str | None = None,
+    segment_filter: str | None = None,
+    tier_filter: str | None = None,
+    heat_status_filter: str | None = None,
+    company_filter: str | None = None,
+    industry_filter: str | None = None,
+    location_filter: str | None = None,
+    tag_filter: str | None = None,
+    min_score: float | None = None,
+    max_score: float | None = None,
+    has_email: bool | None = None,
+    has_phone: bool | None = None,
+    has_linkedin: bool | None = None,
+    created_from: datetime | None = None,
+    created_to: datetime | None = None,
+    last_scored_from: datetime | None = None,
+    last_scored_to: datetime | None = None,
     sort_by: str = "created_at",
     sort_desc: bool = True,
 ) -> dict[str, Any]:
@@ -1103,6 +1177,22 @@ def _get_leads_payload(
         page_size=page_size,
         search=search,
         status_filter=status_filter,
+        segment_filter=segment_filter,
+        tier_filter=tier_filter,
+        heat_status_filter=heat_status_filter,
+        company_filter=company_filter,
+        industry_filter=industry_filter,
+        location_filter=location_filter,
+        tag_filter=tag_filter,
+        min_score=min_score,
+        max_score=max_score,
+        has_email=has_email,
+        has_phone=has_phone,
+        has_linkedin=has_linkedin,
+        created_from=created_from,
+        created_to=created_to,
+        last_scored_from=last_scored_from,
+        last_scored_to=last_scored_to,
         sort_by=sort_by,
         sort_desc=sort_desc,
     )
@@ -1635,16 +1725,44 @@ def _export_csv_payload(db: Session, *, entity: str, fields: str | None) -> tupl
     return output.getvalue(), f"{selected_entity}.csv"
 
 
+def _default_integrations_payload() -> dict[str, dict[str, Any]]:
+    providers: dict[str, dict[str, Any]] = {}
+    for key, value in DEFAULT_INTEGRATION_CATALOG.items():
+        providers[key] = {
+            "enabled": bool(value.get("enabled")),
+            "config": dict(value.get("config") or {}),
+            "meta": dict(value.get("meta") or {}),
+            "updated_at": None,
+        }
+    return providers
+
+
 def _list_integrations_payload(db: Session) -> dict[str, Any]:
     rows = db.query(DBIntegrationConfig).order_by(DBIntegrationConfig.key.asc()).all()
-    providers: dict[str, dict[str, Any]] = {}
+    providers = _default_integrations_payload()
     for row in rows:
-        providers[row.key] = {
-            "enabled": bool(row.enabled),
-            "config": row.config_json or {},
-            "updated_at": row.updated_at.isoformat() if row.updated_at else None,
-        }
-    return {"providers": providers}
+        key = row.key.strip().lower()
+        current = providers.get(
+            key,
+            {
+                "enabled": False,
+                "config": {},
+                "meta": {
+                    "category": "custom",
+                    "free_tier": "Unknown",
+                    "description": "Custom provider",
+                },
+                "updated_at": None,
+            },
+        )
+        current_config = current.get("config") if isinstance(current.get("config"), dict) else {}
+        row_config = row.config_json if isinstance(row.config_json, dict) else {}
+        current["enabled"] = bool(row.enabled)
+        current["config"] = {**current_config, **row_config}
+        current["updated_at"] = row.updated_at.isoformat() if row.updated_at else None
+        providers[key] = current
+    ordered = {key: providers[key] for key in sorted(providers.keys())}
+    return {"providers": ordered}
 
 
 def _save_integrations_payload(
@@ -1673,6 +1791,22 @@ def _save_integrations_payload(
         metadata={"providers": sorted(payload.providers.keys())},
     )
     return _list_integrations_payload(db)
+
+
+def _web_research_payload(
+    db: Session,
+    *,
+    query: str,
+    provider: str,
+    limit: int,
+) -> dict[str, Any]:
+    integrations = _list_integrations_payload(db).get("providers", {})
+    return run_web_research(
+        query=query,
+        limit=limit,
+        provider_selector=provider,
+        provider_configs=integrations,
+    )
 
 
 def _list_webhooks_payload(db: Session) -> dict[str, Any]:
@@ -2474,16 +2608,52 @@ def create_app() -> FastAPI:
         page_size: int = Query(default=25, ge=1, le=100),
         q: str | None = Query(default=None),
         status: str | None = Query(default=None),
+        segment: str | None = Query(default=None),
+        tier: str | None = Query(default=None),
+        heat_status: str | None = Query(default=None),
+        company: str | None = Query(default=None),
+        industry: str | None = Query(default=None),
+        location: str | None = Query(default=None),
+        tag: str | None = Query(default=None),
+        min_score: float | None = Query(default=None, ge=0, le=100),
+        max_score: float | None = Query(default=None, ge=0, le=100),
+        has_email: bool | None = Query(default=None),
+        has_phone: bool | None = Query(default=None),
+        has_linkedin: bool | None = Query(default=None),
+        created_from: str | None = Query(default=None),
+        created_to: str | None = Query(default=None),
+        last_scored_from: str | None = Query(default=None),
+        last_scored_to: str | None = Query(default=None),
         sort: str = Query(default="created_at"),
         order: str = Query(default="desc"),
     ) -> dict[str, Any]:
         sort_desc = order.lower() == "desc"
+        created_from_dt = _parse_datetime_field(created_from, "created_from")
+        created_to_dt = _parse_datetime_field(created_to, "created_to")
+        last_scored_from_dt = _parse_datetime_field(last_scored_from, "last_scored_from")
+        last_scored_to_dt = _parse_datetime_field(last_scored_to, "last_scored_to")
         return _get_leads_payload(
-            db, 
-            page=page, 
+            db,
+            page=page,
             page_size=page_size,
             search=q,
             status_filter=status,
+            segment_filter=segment,
+            tier_filter=tier,
+            heat_status_filter=heat_status,
+            company_filter=company,
+            industry_filter=industry,
+            location_filter=location,
+            tag_filter=tag,
+            min_score=min_score,
+            max_score=max_score,
+            has_email=has_email,
+            has_phone=has_phone,
+            has_linkedin=has_linkedin,
+            created_from=created_from_dt,
+            created_to=created_to_dt,
+            last_scored_from=last_scored_from_dt,
+            last_scored_to=last_scored_to_dt,
             sort_by=sort,
             sort_desc=sort_desc
         )
@@ -3110,6 +3280,20 @@ def create_app() -> FastAPI:
         limit: int = Query(default=20, ge=1, le=50),
     ) -> dict[str, Any]:
         return _search_payload(db, query=q, limit=limit)
+
+    @admin_v1.get("/research/web")
+    def web_research_v1(
+        db: Session = Depends(get_db),
+        q: str = Query(default=""),
+        provider: str = Query(default="auto"),
+        limit: int = Query(default=8, ge=1, le=25),
+    ) -> dict[str, Any]:
+        return _web_research_payload(
+            db,
+            query=q,
+            provider=provider,
+            limit=limit,
+        )
 
     @admin_v1.get("/help")
     def help_v1(db: Session = Depends(get_db)) -> dict[str, Any]:

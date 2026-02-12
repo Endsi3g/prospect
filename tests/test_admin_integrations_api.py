@@ -23,6 +23,37 @@ def test_integrations_put_and_get(client):
     assert "slack" in get_response.json()["providers"]
 
 
+def test_integrations_include_research_providers_with_free_tier_metadata(client):
+    response = client.get("/api/v1/admin/integrations", auth=("admin", "secret"))
+    assert response.status_code == 200
+    providers = response.json()["providers"]
+    assert "duckduckgo" in providers
+    assert "perplexity" in providers
+    assert "firecrawl" in providers
+    assert providers["duckduckgo"]["enabled"] is True
+    assert "free_tier" in providers["perplexity"]["meta"]
+
+
+def test_integrations_can_persist_perplexity_and_firecrawl_config(client):
+    payload = {
+        "providers": {
+            "perplexity": {"enabled": True, "config": {"model": "sonar", "max_tokens": 500}},
+            "firecrawl": {"enabled": True, "config": {"country": "us", "lang": "en"}},
+        }
+    }
+    put_response = client.put(
+        "/api/v1/admin/integrations",
+        auth=("admin", "secret"),
+        json=payload,
+    )
+    assert put_response.status_code == 200
+    providers = put_response.json()["providers"]
+    assert providers["perplexity"]["enabled"] is True
+    assert providers["perplexity"]["config"]["model"] == "sonar"
+    assert providers["firecrawl"]["enabled"] is True
+    assert providers["firecrawl"]["config"]["country"] == "us"
+
+
 def test_webhooks_crud(client):
     create_response = client.post(
         "/api/v1/admin/webhooks",

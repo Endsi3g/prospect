@@ -60,7 +60,7 @@ export default function DashboardPage() {
           <div className="@container/main flex flex-1 flex-col gap-2">
             <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">
               <div className="px-4 lg:px-6">
-                <SyncStatus updatedAt={updatedAt} isValidating={isValidating} />
+                <SyncStatus updatedAt={updatedAt} isValidating={isValidating} onRefresh={() => void mutate()} />
               </div>
               {isLoading ? (
                 <div className="space-y-4 px-4 lg:px-6">

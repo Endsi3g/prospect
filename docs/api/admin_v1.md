@@ -9,6 +9,11 @@ Authentication: Basic Auth (`ADMIN_USERNAME` / `ADMIN_PASSWORD`) required for `/
 
 ## Leads
 - `GET /api/v1/admin/leads?page=1&page_size=25`
+- advanced query params:
+  - `q`, `status`, `segment`, `tier`, `heat_status`, `company`, `industry`, `location`, `tag`
+  - `min_score`, `max_score`
+  - `has_email`, `has_phone`, `has_linkedin`
+  - `created_from`, `created_to`, `last_scored_from`, `last_scored_to` (ISO datetime)
 - `POST /api/v1/admin/leads`
 
 ## Tasks
@@ -28,6 +33,7 @@ Authentication: Basic Auth (`ADMIN_USERNAME` / `ADMIN_PASSWORD`) required for `/
 - `GET /api/v1/admin/settings`
 - `PUT /api/v1/admin/settings`
 - `GET /api/v1/admin/search?q=...&limit=...`
+- `GET /api/v1/admin/research/web?q=...&provider=auto&limit=8`
 - `GET /api/v1/admin/help`
 
 ## Import CSV

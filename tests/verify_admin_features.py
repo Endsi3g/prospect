@@ -67,7 +67,7 @@ def verify_notifications():
     print("\n--- Testing Notifications API ---")
     # Create Notification
     payload = {
-        "event_key": "test_event",
+        "event_key": "task_created",
         "title": "Test Notification",
         "message": "This is a test",
         "channel": "in_app"

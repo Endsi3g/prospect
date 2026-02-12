@@ -10,10 +10,11 @@ import {
     IconMail,
     IconPhone,
     IconBrandLinkedin,
-    IconBuilding,    IconChartBar
+    IconBuilding, IconChartBar
 } from "@tabler/icons-react"
-import { format } from "date-fns"
+import { format, differenceInMinutes } from "date-fns"
 import { fr } from "date-fns/locale"
+import Link from "next/link"
 
 import { fetchApi } from "@/lib/api"
 import { Button } from "@/components/ui/button"
@@ -75,6 +76,7 @@ type Lead = {
     interactions: Interaction[]
     tags: string[]
     created_at: string
+    updated_at: string
 }
 
 const fetcher = <T,>(path: string) => fetchApi<T>(path)
@@ -131,14 +133,39 @@ export default function LeadDetailPage() {
                 <SiteHeader />
                 <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
                     {/* Header */}
+                    {/* Header */}
+                    <nav className="flex items-center text-sm text-muted-foreground mb-4">
+                        <Link href="/leads" className="hover:text-foreground transition-colors">Leads</Link>
+                        <span className="mx-2">/</span>
+                        <span className="text-foreground font-medium">{lead.first_name} {lead.last_name}</span>
+                    </nav>
                     <div className="flex items-center gap-4 py-4">
                         <Button variant="ghost" size="icon" onClick={() => router.push("/leads")}>
                             <IconArrowLeft className="h-5 w-5" />
                         </Button>
                         <div>
-                            <h1 className="text-2xl font-bold tracking-tight">
-                                {lead.first_name} {lead.last_name}
-                            </h1>
+                            <div className="flex items-center gap-3">
+                                <h1 className="text-2xl font-bold tracking-tight">
+                                    {lead.first_name} {lead.last_name}
+                                </h1>
+                                {(() => {
+                                    const updatedAt = lead.updated_at ? new Date(lead.updated_at) : new Date(lead.created_at)
+                                    const diffMins = differenceInMinutes(new Date(), updatedAt)
+                                    const isStale = diffMins > 30
+                                    return (
+                                        <div className="flex items-center gap-2 px-2 py-1 bg-muted/50 rounded-full border">
+                                            {isStale ? (
+                                                <div className="h-2 w-2 rounded-full bg-red-500 animate-pulse" />
+                                            ) : (
+                                                <div className="h-2 w-2 rounded-full bg-green-500" />
+                                            )}
+                                            <span className="text-xs text-muted-foreground">
+                                                {isStale ? `Périmées (> ${Math.floor(diffMins)}m)` : "À jour"}
+                                            </span>
+                                        </div>
+                                    )
+                                })()}
+                            </div>
                             <div className="flex items-center gap-2 text-muted-foreground">
                                 <IconBuilding className="h-4 w-4" />
                                 <span>{lead.company.name}</span>

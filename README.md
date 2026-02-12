@@ -7,6 +7,7 @@ Lead generation and outreach platform with dual scoring, intent enrichment, and 
 This project does the following:
 
 - Source leads from `Apollo.io` (B2B contacts) and `Apify` Google Maps crawler (local businesses).
+- Run advanced web research via `DuckDuckGo` (free), `Perplexity`, and `Firecrawl`.
 - Enrich leads with company and intent signals (`mock`, `bombora`, `6sense` providers).
 - Score each lead with:
   - `ICP score` (fit)
@@ -25,6 +26,8 @@ This project does the following:
 - Intelligent diagnostics and optional Codex autofix pipeline (`scripts/qa/*` + API endpoints).
 - Expanded localhost smoke validation (`test_localhost_all_features.ps1`) including import and diagnostics endpoints.
 - French dashboard UX improvements (skeleton loading states and connected task actions).
+- Advanced lead search filters (score, tier, heat status, company/industry/location, tags, profile completeness).
+- Advanced web research endpoint with provider routing (`duckduckgo`, `perplexity`, `firecrawl`).
 
 ## Installation
 
@@ -43,6 +46,8 @@ Copy `.env.example` to `.env` and configure values.
 APOLLO_API_KEY=your_apollo_api_key_here
 OPENAI_API_KEY=your_openai_api_key_here
 APIFY_API_TOKEN=your_apify_api_token_here
+PERPLEXITY_API_KEY=your_perplexity_api_key_here
+FIRECRAWL_API_KEY=your_firecrawl_api_key_here
 
 # Intent provider
 INTENT_PROVIDER=mock
@@ -112,6 +117,7 @@ Available endpoints:
 - `GET /healthz` service and DB health
 - `GET /api/v1/admin/stats` core funnel KPIs
 - `GET /api/v1/admin/leads?page=1&page_size=25` paginated leads
+- `GET /api/v1/admin/leads?...` advanced lead filters (`min_score`, `max_score`, `tier`, `heat_status`, `company`, `industry`, `location`, `tag`, `has_email`, `has_phone`, `has_linkedin`, date ranges)
 - `POST /api/v1/admin/leads` create a lead
 - `GET /api/v1/admin/tasks` list tasks
 - `POST /api/v1/admin/tasks` create a task
@@ -125,6 +131,7 @@ Available endpoints:
 - `GET /api/v1/admin/settings` read dashboard settings
 - `PUT /api/v1/admin/settings` persist dashboard settings
 - `GET /api/v1/admin/search?q=...&limit=...` global search
+- `GET /api/v1/admin/research/web?q=...&provider=auto&limit=8` advanced web research
 - `GET /api/v1/admin/help` help payload
 - `POST /api/v1/admin/import/csv/preview` detect table + preview import
 - `POST /api/v1/admin/import/csv/commit` commit CSV import

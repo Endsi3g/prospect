@@ -33,8 +33,22 @@
 
 ## 2. Priorites produit restantes
 
+### 🚨 CRITIQUE (Audit)
+
+- **Formulaire Lead** : Validation email temps réel + Toast succès.
+- **Navigation Leads** : Rendre le nom cliquable vers détails.
+- **UI** : Fixer contraste dark mode & bannière données périmées.
+
+### 🟠 HAUTE PRIORITÉ
+
+- **Analytics** : Fixer l'état vide/chargement.
+- **UI Globale** : Standardiser formulaires & Toasts.
+- **Exports** : Vérifier fonctionnement CSV/PDF.
+
+### 🟡 MOYENNE
+
 - Ajouter filtres serveur + pagination serveur pour les tâches.
-- Completer analytics avec vues concretes (funnel conversion, performance par source).
+- Completer analytics avec vues concretes.
 - Ajouter actions bulk leads (export, assignation, ajout campagne).
 
 ## 3. Priorites techniques restantes

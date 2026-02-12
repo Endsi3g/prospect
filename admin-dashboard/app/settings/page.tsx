@@ -42,7 +42,7 @@ type SettingsPayload = {
 }
 
 type IntegrationsPayload = {
-  providers: Record<string, { enabled: boolean; config: Record<string, string> }>
+  providers: Record<string, { enabled: boolean; config: Record<string, unknown>; meta?: Record<string, unknown> }>
 }
 
 type WebhookItem = {
@@ -95,6 +95,14 @@ export default function SettingsPage() {
     slackWebhook: "",
     zapierEnabled: false,
     zapierZapId: "",
+    duckduckgoEnabled: true,
+    perplexityEnabled: false,
+    perplexityApiKey: "",
+    perplexityModel: "sonar",
+    firecrawlEnabled: false,
+    firecrawlApiKey: "",
+    firecrawlCountry: "us",
+    firecrawlLang: "en",
   })
   const [webhookForm, setWebhookForm] = React.useState({
     name: "",
@@ -111,11 +119,22 @@ export default function SettingsPage() {
     if (!integrations) return
     const slack = integrations.providers.slack
     const zapier = integrations.providers.zapier
+    const duckduckgo = integrations.providers.duckduckgo
+    const perplexity = integrations.providers.perplexity
+    const firecrawl = integrations.providers.firecrawl
     setIntegrationForm({
       slackEnabled: Boolean(slack?.enabled),
-      slackWebhook: slack?.config?.webhook || "",
+      slackWebhook: String(slack?.config?.webhook || ""),
       zapierEnabled: Boolean(zapier?.enabled),
-      zapierZapId: zapier?.config?.zap_id || "",
+      zapierZapId: String(zapier?.config?.zap_id || ""),
+      duckduckgoEnabled: Boolean(duckduckgo?.enabled ?? true),
+      perplexityEnabled: Boolean(perplexity?.enabled),
+      perplexityApiKey: String(perplexity?.config?.api_key || ""),
+      perplexityModel: String(perplexity?.config?.model || "sonar"),
+      firecrawlEnabled: Boolean(firecrawl?.enabled),
+      firecrawlApiKey: String(firecrawl?.config?.api_key || ""),
+      firecrawlCountry: String(firecrawl?.config?.country || "us"),
+      firecrawlLang: String(firecrawl?.config?.lang || "en"),
     })
   }, [integrations])
 
@@ -152,6 +171,27 @@ export default function SettingsPage() {
             zapier: {
               enabled: integrationForm.zapierEnabled,
               config: { zap_id: integrationForm.zapierZapId },
+            },
+            duckduckgo: {
+              enabled: integrationForm.duckduckgoEnabled,
+              config: { region: "us-en", safe_search: "moderate" },
+            },
+            perplexity: {
+              enabled: integrationForm.perplexityEnabled,
+              config: {
+                api_key: integrationForm.perplexityApiKey,
+                model: integrationForm.perplexityModel,
+                api_key_env: "PERPLEXITY_API_KEY",
+              },
+            },
+            firecrawl: {
+              enabled: integrationForm.firecrawlEnabled,
+              config: {
+                api_key: integrationForm.firecrawlApiKey,
+                country: integrationForm.firecrawlCountry,
+                lang: integrationForm.firecrawlLang,
+                api_key_env: "FIRECRAWL_API_KEY",
+              },
             },
           },
         }),
@@ -377,6 +417,9 @@ export default function SettingsPage() {
 
           <div className="max-w-4xl space-y-4 rounded-xl border p-5">
             <h3 className="text-lg font-semibold">Integrations</h3>
+            <p className="text-sm text-muted-foreground">
+              Focus gratuit / free tier: DuckDuckGo (gratuit), Perplexity (credits d&apos;essai), Firecrawl (free tier).
+            </p>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-3 rounded-lg border p-3">
                 <div className="flex items-center gap-2">
@@ -427,6 +470,106 @@ export default function SettingsPage() {
                     }))
                   }
                 />
+              </div>
+              <div className="space-y-3 rounded-lg border p-3">
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="duckduckgo-enabled"
+                    checked={integrationForm.duckduckgoEnabled}
+                    onCheckedChange={(checked) =>
+                      setIntegrationForm((current) => ({
+                        ...current,
+                        duckduckgoEnabled: Boolean(checked),
+                      }))
+                    }
+                  />
+                  <Label htmlFor="duckduckgo-enabled">DuckDuckGo web search (gratuit)</Label>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Aucun token requis. Fournit la base de recherche web avancee.
+                </p>
+              </div>
+              <div className="space-y-3 rounded-lg border p-3">
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="perplexity-enabled"
+                    checked={integrationForm.perplexityEnabled}
+                    onCheckedChange={(checked) =>
+                      setIntegrationForm((current) => ({
+                        ...current,
+                        perplexityEnabled: Boolean(checked),
+                      }))
+                    }
+                  />
+                  <Label htmlFor="perplexity-enabled">Perplexity (research competitor)</Label>
+                </div>
+                <Input
+                  placeholder="Perplexity API key (optionnel)"
+                  value={integrationForm.perplexityApiKey}
+                  onChange={(event) =>
+                    setIntegrationForm((current) => ({
+                      ...current,
+                      perplexityApiKey: event.target.value,
+                    }))
+                  }
+                />
+                <Input
+                  placeholder="Modele (ex: sonar)"
+                  value={integrationForm.perplexityModel}
+                  onChange={(event) =>
+                    setIntegrationForm((current) => ({
+                      ...current,
+                      perplexityModel: event.target.value,
+                    }))
+                  }
+                />
+              </div>
+              <div className="space-y-3 rounded-lg border p-3">
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="firecrawl-enabled"
+                    checked={integrationForm.firecrawlEnabled}
+                    onCheckedChange={(checked) =>
+                      setIntegrationForm((current) => ({
+                        ...current,
+                        firecrawlEnabled: Boolean(checked),
+                      }))
+                    }
+                  />
+                  <Label htmlFor="firecrawl-enabled">Firecrawl (crawler competitor)</Label>
+                </div>
+                <Input
+                  placeholder="Firecrawl API key (optionnel)"
+                  value={integrationForm.firecrawlApiKey}
+                  onChange={(event) =>
+                    setIntegrationForm((current) => ({
+                      ...current,
+                      firecrawlApiKey: event.target.value,
+                    }))
+                  }
+                />
+                <div className="grid grid-cols-2 gap-2">
+                  <Input
+                    placeholder="Country (us)"
+                    value={integrationForm.firecrawlCountry}
+                    onChange={(event) =>
+                      setIntegrationForm((current) => ({
+                        ...current,
+                        firecrawlCountry: event.target.value,
+                      }))
+                    }
+                  />
+                  <Input
+                    placeholder="Lang (en)"
+                    value={integrationForm.firecrawlLang}
+                    onChange={(event) =>
+                      setIntegrationForm((current) => ({
+                        ...current,
+                        firecrawlLang: event.target.value,
+                      }))
+                    }
+                  />
+                </div>
               </div>
             </div>
             <Button variant="outline" onClick={saveIntegrations} disabled={savingIntegrations}>
