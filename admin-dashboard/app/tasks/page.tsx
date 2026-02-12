@@ -27,11 +27,32 @@ type ApiTask = {
   lead_id?: string | null
 }
 
+type TasksResponse = {
+  page: number
+  page_size: number
+  total: number
+  items: ApiTask[]
+}
+
 const fetcher = <T,>(path: string) => fetchApi<T>(path)
 
 export default function TasksPage() {
-  const { data, error, isLoading, mutate } = useSWR<ApiTask[]>(
-    "/api/v1/admin/tasks",
+  const [page, setPage] = React.useState(1)
+  const pageSize = 25
+  const [search, setSearch] = React.useState("")
+  const [status, setStatus] = React.useState("ALL")
+  const [sort, setSort] = React.useState("created_at")
+  const [order, setOrder] = React.useState("desc")
+  const [debouncedSearch, setDebouncedSearch] = React.useState(search)
+
+  React.useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 350)
+    return () => clearTimeout(timer)
+  }, [search])
+
+  const queryStatus = status === "ALL" ? "" : status
+  const { data, error, isLoading, mutate } = useSWR<TasksResponse>(
+    `/api/v1/admin/tasks?page=${page}&page_size=${pageSize}&q=${encodeURIComponent(debouncedSearch)}&status=${encodeURIComponent(queryStatus)}&sort=${sort}&order=${order}`,
     fetcher,
   )
   const [updatedAt, setUpdatedAt] = React.useState<Date | null>(null)
@@ -41,8 +62,8 @@ export default function TasksPage() {
     setUpdatedAt(new Date())
   }, [data])
 
-  const tasks: Task[] = data
-    ? data.map((task) => ({
+  const tasks: Task[] = data?.items
+    ? data.items.map((task) => ({
       id: task.id,
       title: task.title,
       status: task.status,
@@ -82,13 +103,36 @@ export default function TasksPage() {
               title="Erreur de chargement des taches."
               onRetry={() => void mutate()}
             />
-          ) : tasks.length === 0 ? (
+          ) : (data?.total || 0) === 0 ? (
             <EmptyState
               title="Aucune tache disponible"
               description="Les taches apparaissent ici apres creation ou conversion depuis les leads."
             />
           ) : (
-            <TasksTable data={tasks} onDataChanged={() => void mutate()} />
+            <TasksTable
+              data={tasks}
+              total={data?.total || 0}
+              page={page}
+              pageSize={pageSize}
+              search={search}
+              status={status}
+              sort={sort}
+              order={order}
+              onSearchChange={(value) => {
+                setSearch(value)
+                setPage(1)
+              }}
+              onStatusChange={(value) => {
+                setStatus(value)
+                setPage(1)
+              }}
+              onPageChange={setPage}
+              onSortChange={(nextSort, nextOrder) => {
+                setSort(nextSort)
+                setOrder(nextOrder)
+              }}
+              onDataChanged={() => void mutate()}
+            />
           )}
         </div>
       </SidebarInset>

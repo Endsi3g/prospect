@@ -54,6 +54,7 @@ export type Task = {
 
 const TASK_STATUSES: Task["status"][] = ["To Do", "In Progress", "Done"]
 const TASK_PRIORITIES: Task["priority"][] = ["Low", "Medium", "High", "Critical"]
+const TASK_STATUS_FILTERS: string[] = ["ALL", ...TASK_STATUSES]
 
 function priorityClass(priority: Task["priority"]): string {
   if (priority === "Critical") return "border-red-500 text-red-600"
@@ -76,15 +77,41 @@ function toIsoFromDatetimeLocal(value: string): string | null {
   return date.toISOString()
 }
 
+function SortIcon({ column, sort, order }: { column: string; sort: string; order: string }) {
+  if (sort !== column) return null
+  return <span className="ml-1">{order === "asc" ? "^" : "v"}</span>
+}
+
 export function TasksTable({
   data,
+  total,
+  page,
+  pageSize,
+  search,
+  status,
+  sort,
+  order,
+  onSearchChange,
+  onStatusChange,
+  onPageChange,
+  onSortChange,
   onDataChanged,
 }: {
   data: Task[]
+  total: number
+  page: number
+  pageSize: number
+  search: string
+  status: string
+  sort: string
+  order: string
+  onSearchChange: (value: string) => void
+  onStatusChange: (value: string) => void
+  onPageChange: (page: number) => void
+  onSortChange: (sort: string, order: string) => void
   onDataChanged?: () => void
 }) {
   const { openProjectForm, openConfirm } = useModalSystem()
-  const [filter, setFilter] = React.useState("")
   const [editingTask, setEditingTask] = React.useState<Task | null>(null)
   const [editOpen, setEditOpen] = React.useState(false)
   const [editSubmitting, setEditSubmitting] = React.useState(false)
@@ -96,18 +123,7 @@ export function TasksTable({
     assigned_to: "Vous",
     lead_id: "",
   })
-
-  const filteredData = React.useMemo(() => {
-    const cleanFilter = filter.trim().toLowerCase()
-    if (!cleanFilter) return data
-    return data.filter((task) => {
-      return (
-        task.title.toLowerCase().includes(cleanFilter) ||
-        task.status.toLowerCase().includes(cleanFilter) ||
-        task.priority.toLowerCase().includes(cleanFilter)
-      )
-    })
-  }, [data, filter])
+  const maxPage = Math.ceil(total / pageSize) || 1
 
   function convertTaskToProject(task: Task) {
     openProjectForm({
@@ -184,32 +200,64 @@ export function TasksTable({
     })
   }
 
+  const handleSort = (column: string) => {
+    if (sort === column) {
+      onSortChange(column, order === "asc" ? "desc" : "asc")
+      return
+    }
+    onSortChange(column, "asc")
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <Input
-          placeholder="Filtrer les taches..."
-          value={filter}
-          onChange={(event) => setFilter(event.target.value)}
-          className="sm:max-w-md"
-        />
-        <p className="text-sm text-muted-foreground">{filteredData.length} tache(s)</p>
+        <div className="flex flex-1 items-center gap-2">
+          <Input
+            placeholder="Rechercher une tache..."
+            value={search}
+            onChange={(event) => onSearchChange(event.target.value)}
+            className="sm:max-w-xs"
+          />
+          <Select value={status} onValueChange={onStatusChange}>
+            <SelectTrigger className="w-[180px]">
+              <SelectValue placeholder="Statut" />
+            </SelectTrigger>
+            <SelectContent>
+              {TASK_STATUS_FILTERS.map((statusValue) => (
+                <SelectItem key={statusValue} value={statusValue}>
+                  {statusValue === "ALL" ? "Tous les statuts" : statusValue}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <p className="text-sm text-muted-foreground">{total} tache(s)</p>
       </div>
 
       <div className="rounded-lg border">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Tache</TableHead>
-              <TableHead>Statut</TableHead>
-              <TableHead>Priorite</TableHead>
-              <TableHead>Echeance</TableHead>
-              <TableHead>Assigne a</TableHead>
+              <TableHead className="cursor-pointer hover:bg-muted/50" onClick={() => handleSort("title")}>
+                Tache <SortIcon column="title" sort={sort} order={order} />
+              </TableHead>
+              <TableHead className="cursor-pointer hover:bg-muted/50" onClick={() => handleSort("status")}>
+                Statut <SortIcon column="status" sort={sort} order={order} />
+              </TableHead>
+              <TableHead className="cursor-pointer hover:bg-muted/50" onClick={() => handleSort("priority")}>
+                Priorite <SortIcon column="priority" sort={sort} order={order} />
+              </TableHead>
+              <TableHead className="cursor-pointer hover:bg-muted/50" onClick={() => handleSort("due_date")}>
+                Echeance <SortIcon column="due_date" sort={sort} order={order} />
+              </TableHead>
+              <TableHead className="cursor-pointer hover:bg-muted/50" onClick={() => handleSort("assigned_to")}>
+                Assigne a <SortIcon column="assigned_to" sort={sort} order={order} />
+              </TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredData.map((task) => (
+            {data.map((task) => (
               <TableRow key={task.id}>
                 <TableCell>
                   <div className="font-medium">{task.title}</div>
@@ -253,7 +301,7 @@ export function TasksTable({
                 </TableCell>
               </TableRow>
             ))}
-            {filteredData.length === 0 ? (
+            {data.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={6} className="py-8 text-center text-sm text-muted-foreground">
                   Aucune tache ne correspond a votre recherche.
@@ -262,6 +310,28 @@ export function TasksTable({
             ) : null}
           </TableBody>
         </Table>
+      </div>
+
+      <div className="flex items-center justify-end space-x-2 py-2">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => onPageChange(page - 1)}
+          disabled={page <= 1}
+        >
+          Precedent
+        </Button>
+        <div className="flex-1 text-center text-sm text-muted-foreground">
+          Page {page} sur {maxPage}
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => onPageChange(page + 1)}
+          disabled={page >= maxPage}
+        >
+          Suivant
+        </Button>
       </div>
 
       <Sheet open={editOpen} onOpenChange={setEditOpen}>

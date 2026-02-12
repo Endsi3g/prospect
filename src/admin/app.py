@@ -120,6 +120,24 @@ class InMemoryRateLimiter:
                 return False
             entries.append(now)
             self._hits[key] = entries
+
+
+class InMemoryRateLimiter:
+    def __init__(self) -> None:
+        self._lock = Lock()
+        self._hits: dict[str, list[float]] = {}
+
+    def allow(self, key: str, limit: int, window_seconds: int) -> bool:
+        now = time.time()
+        window_start = now - window_seconds
+        with self._lock:
+            entries = self._hits.get(key, [])
+            entries = [stamp for stamp in entries if stamp >= window_start]
+            if len(entries) >= limit:
+                self._hits[key] = entries
+                return False
+            entries.append(now)
+            self._hits[key] = entries
             return True
 
 
@@ -133,6 +151,11 @@ class AdminLeadCreateRequest(BaseModel):
     phone: str | None = None
     company_name: str
     status: str | None = None
+    segment: str | None = None
+
+
+class AdminBulkDeleteRequest(BaseModel):
+    ids: list[str] = Field(default_factory=list)
     segment: str | None = None
 
 
@@ -871,6 +894,40 @@ def _create_lead_payload(db: Session, payload: AdminLeadCreateRequest) -> dict[s
     }
 
 
+def _delete_lead_payload(db: Session, lead_id: str) -> dict[str, Any]:
+    lead = db.query(DBLead).filter(DBLead.id == lead_id).first()
+    if not lead:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lead not found.")
+
+    db.delete(lead)
+    try:
+        db.commit()
+    except SQLAlchemyError as exc:
+        db.rollback()
+        logger.exception("Failed to delete lead.", extra={"error": str(exc), "lead_id": lead_id})
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to delete lead.",
+        ) from exc
+    return {"deleted": True, "id": lead_id}
+
+
+def _bulk_delete_leads_payload(db: Session, lead_ids: list[str]) -> dict[str, Any]:
+    deleted_count = 0
+    try:
+        query = db.query(DBLead).filter(DBLead.id.in_(lead_ids))
+        deleted_count = query.delete(synchronize_session=False)
+        db.commit()
+    except SQLAlchemyError as exc:
+        db.rollback()
+        logger.exception("Failed to bulk delete leads.", extra={"error": str(exc), "count": len(lead_ids)})
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to bulk delete leads.",
+        ) from exc
+    return {"deleted": True, "count": deleted_count}
+
+
 def _create_task_payload(db: Session, payload: AdminTaskCreateRequest) -> dict[str, Any]:
     task = DBTask(
         id=str(uuid.uuid4()),
@@ -1049,6 +1106,57 @@ def _get_leads_payload(
         sort_by=sort_by,
         sort_desc=sort_desc,
     )
+
+
+def _get_tasks_payload(
+    db: Session,
+    page: int,
+    page_size: int,
+    search: str | None = None,
+    status_filter: str | None = None,
+    sort_by: str = "created_at",
+    sort_desc: bool = True,
+) -> dict[str, Any]:
+    query = db.query(DBTask)
+
+    if search and search.strip():
+        pattern = f"%{search.strip()}%"
+        query = query.filter(
+            or_(
+                DBTask.title.ilike(pattern),
+                DBTask.assigned_to.ilike(pattern),
+                DBTask.lead_id.ilike(pattern),
+            )
+        )
+
+    if status_filter and status_filter.strip():
+        query = query.filter(DBTask.status == _coerce_task_status(status_filter))
+
+    total = query.count()
+
+    sort_map = {
+        "created_at": DBTask.created_at,
+        "title": DBTask.title,
+        "status": DBTask.status,
+        "priority": DBTask.priority,
+        "due_date": DBTask.due_date,
+        "assigned_to": DBTask.assigned_to,
+    }
+    sort_column = sort_map.get(sort_by, DBTask.created_at)
+    if sort_desc:
+        query = query.order_by(sort_column.desc(), DBTask.id.desc())
+    else:
+        query = query.order_by(sort_column.asc(), DBTask.id.asc())
+
+    offset = (page - 1) * page_size
+    rows = query.offset(offset).limit(page_size).all()
+
+    return {
+        "page": page,
+        "page_size": page_size,
+        "total": total,
+        "items": [_serialize_task(task) for task in rows],
+    }
 
 
 def _rescore_payload(db: Session) -> dict[str, Any]:
@@ -2459,6 +2567,39 @@ def create_app() -> FastAPI:
         )
         return created
 
+    @admin_v1.delete("/leads/{lead_id}")
+    def delete_lead_v1(
+        lead_id: str,
+        actor: str = "admin",
+        db: Session = Depends(get_db),
+    ) -> dict[str, Any]:
+        deleted = _delete_lead_payload(db, lead_id)
+        _audit_log(
+            db,
+            actor=actor,
+            action="lead_deleted",
+            entity_type="lead",
+            entity_id=lead_id,
+        )
+        return deleted
+
+    @admin_v1.post("/leads/bulk-delete")
+    def bulk_delete_leads_v1(
+        payload: AdminBulkDeleteRequest,
+        actor: str = "admin",
+        db: Session = Depends(get_db),
+    ) -> dict[str, Any]:
+        result = _bulk_delete_leads_payload(db, payload.ids)
+        _audit_log(
+            db,
+            actor=actor,
+            action="leads_bulk_deleted",
+            entity_type="lead",
+            entity_id="bulk",
+            metadata={"count": result.get("count"), "ids": payload.ids},
+        )
+        return result
+
     @admin_v1.post("/tasks")
     def create_task_v1(
         payload: AdminTaskCreateRequest,
@@ -2486,9 +2627,25 @@ def create_app() -> FastAPI:
         return created
 
     @admin_v1.get("/tasks")
-    def list_tasks_v1(db: Session = Depends(get_db)) -> list[dict[str, Any]]:
-        tasks = db.query(DBTask).order_by(DBTask.created_at.desc()).all()
-        return [_serialize_task(task) for task in tasks]
+    def list_tasks_v1(
+        db: Session = Depends(get_db),
+        page: int = Query(default=1, ge=1),
+        page_size: int = Query(default=25, ge=1, le=100),
+        q: str | None = Query(default=None),
+        status: str | None = Query(default=None),
+        sort: str = Query(default="created_at"),
+        order: str = Query(default="desc"),
+    ) -> dict[str, Any]:
+        sort_desc = order.lower() == "desc"
+        return _get_tasks_payload(
+            db,
+            page=page,
+            page_size=page_size,
+            search=q,
+            status_filter=status,
+            sort_by=sort,
+            sort_desc=sort_desc,
+        )
 
     @admin_v1.patch("/tasks/{task_id}")
     def update_task_v1(
