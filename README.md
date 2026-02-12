@@ -6,20 +6,25 @@ Lead generation and outreach platform with dual scoring, intent enrichment, and 
 
 This project does the following:
 
-- Source leads from:
-- `Apollo.io` (B2B contacts)
-- `Apify` Google Maps crawler (local businesses)
-- Enrich leads with company + intent signals:
-- Intent providers: `mock` (default), `bombora`, `6sense`
+- Source leads from `Apollo.io` (B2B contacts) and `Apify` Google Maps crawler (local businesses).
+- Enrich leads with company and intent signals (`mock`, `bombora`, `6sense` providers).
 - Score each lead with:
-- `ICP score` (fit)
-- `Heat score` (timing and engagement)
+  - `ICP score` (fit)
+  - `Heat score` (timing and engagement)
 - Assign:
-- Tier (`Tier A` to `Tier D`)
-- Heat status (`Hot`, `Warm`, `Cold`)
-- Next best action (automation hint)
+  - Tier (`Tier A` to `Tier D`)
+  - Heat status (`Hot`, `Warm`, `Cold`)
+  - Next best action (automation hint)
 - Generate outreach drafts and support follow-up workflows.
 - Expose an admin dashboard and operational APIs.
+
+## Latest Updates (2026-02-12)
+
+- Full task lifecycle in admin API/UI (`create`, `list`, `update`, `delete`).
+- Intelligent CSV import flow with table detection and mapping (`preview` + `commit`).
+- Intelligent diagnostics and optional Codex autofix pipeline (`scripts/qa/*` + API endpoints).
+- Expanded localhost smoke validation (`test_localhost_all_features.ps1`) including import and diagnostics endpoints.
+- French dashboard UX improvements (skeleton loading states and connected task actions).
 
 ## Installation
 
@@ -131,6 +136,26 @@ Available endpoints:
 - `POST /api/v1/score/preview` score a payload without persistence
 
 Legacy endpoints were removed. Use only `/api/v1/*` routes.
+
+## Localhost Quick Start
+
+Run backend + frontend:
+
+```powershell
+.\scripts\ops\start_localhost_one_shot.ps1
+```
+
+Run full localhost smoke test:
+
+```powershell
+.\test_localhost_all_features.ps1
+```
+
+Run intelligent diagnostics:
+
+```powershell
+.\run_intelligent_tests.ps1
+```
 
 One-shot localhost startup (backend + frontend):
 
