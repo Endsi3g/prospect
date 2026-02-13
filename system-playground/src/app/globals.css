@@ -1,0 +1,54 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #020617; /* Very dark blue/black */
+  --foreground: #f8fafc;
+  --border: #1e293b;
+  --input: #0f172a;
+  --ring: #38bdf8;
+  --primary: #38bdf8; /* Cyan */
+  --primary-foreground: #020617;
+  --secondary: #1e293b;
+  --secondary-foreground: #f8fafc;
+  --accent: #f43f5e; /* Rose/Red for alerts */
+  --accent-foreground: #f8fafc;
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+}
+
+/* Scrollbar styling */
+::-webkit_scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit_scrollbar-track {
+  background: var(--background);
+}
+::-webkit_scrollbar-thumb {
+  background: var(--border);
+  border-radius: 10px;
+}
+::-webkit_scrollbar-thumb:hover {
+  background: var(--primary);
+}
+
+.scanner-line {
+  height: 100%;
+  width: 2px;
+  background: linear-gradient(to bottom, transparent, var(--primary), transparent);
+  position: absolute;
+  left: 0;
+  top: 0;
+  animation: scan 3s infinite linear;
+}
+
+@keyframes scan {
+  from { left: -10%; }
+  to { left: 110%; }
+}

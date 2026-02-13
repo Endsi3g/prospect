@@ -383,3 +383,92 @@ def ensure_sqlite_schema_compatibility(engine) -> None:
         connection.execute(
             text("CREATE INDEX IF NOT EXISTS ix_admin_report_runs_created_at ON admin_report_runs (created_at)")
         )
+
+        connection.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS admin_auth_sessions (
+                    id TEXT PRIMARY KEY,
+                    username TEXT NOT NULL,
+                    refresh_token_hash TEXT UNIQUE NOT NULL,
+                    rotated_from_session_id TEXT,
+                    user_agent TEXT,
+                    ip_address TEXT,
+                    created_at TIMESTAMP NOT NULL,
+                    last_seen_at TIMESTAMP,
+                    expires_at TIMESTAMP NOT NULL,
+                    revoked_at TIMESTAMP
+                )
+                """
+            )
+        )
+        connection.execute(
+            text("CREATE INDEX IF NOT EXISTS ix_admin_auth_sessions_username ON admin_auth_sessions (username)")
+        )
+        connection.execute(
+            text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS ix_admin_auth_sessions_refresh_token_hash ON admin_auth_sessions (refresh_token_hash)"
+            )
+        )
+        connection.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_admin_auth_sessions_rotated_from_session_id ON admin_auth_sessions (rotated_from_session_id)"
+            )
+        )
+        connection.execute(
+            text("CREATE INDEX IF NOT EXISTS ix_admin_auth_sessions_created_at ON admin_auth_sessions (created_at)")
+        )
+        connection.execute(
+            text("CREATE INDEX IF NOT EXISTS ix_admin_auth_sessions_expires_at ON admin_auth_sessions (expires_at)")
+        )
+        connection.execute(
+            text("CREATE INDEX IF NOT EXISTS ix_admin_auth_sessions_revoked_at ON admin_auth_sessions (revoked_at)")
+        )
+
+        # ── Assistant Prospect tables ────────────────────────────
+        connection.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS assistant_runs (
+                    id TEXT PRIMARY KEY,
+                    prompt TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'pending',
+                    actor TEXT NOT NULL DEFAULT 'admin',
+                    summary TEXT,
+                    config_json TEXT NOT NULL DEFAULT '{}',
+                    created_at TIMESTAMP,
+                    finished_at TIMESTAMP
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS assistant_actions (
+                    id TEXT PRIMARY KEY,
+                    run_id TEXT NOT NULL,
+                    action_type TEXT NOT NULL,
+                    entity_type TEXT,
+                    payload_json TEXT NOT NULL DEFAULT '{}',
+                    requires_confirm INTEGER NOT NULL DEFAULT 0,
+                    status TEXT NOT NULL DEFAULT 'pending',
+                    result_json TEXT NOT NULL DEFAULT '{}',
+                    created_at TIMESTAMP,
+                    executed_at TIMESTAMP
+                )
+                """
+            )
+        )
+        connection.execute(
+            text("CREATE INDEX IF NOT EXISTS ix_assistant_runs_status ON assistant_runs (status)")
+        )
+        connection.execute(
+            text("CREATE INDEX IF NOT EXISTS ix_assistant_runs_created_at ON assistant_runs (created_at)")
+        )
+        connection.execute(
+            text("CREATE INDEX IF NOT EXISTS ix_assistant_actions_run_id ON assistant_actions (run_id)")
+        )
+        connection.execute(
+            text("CREATE INDEX IF NOT EXISTS ix_assistant_actions_status ON assistant_actions (status)")
+        )

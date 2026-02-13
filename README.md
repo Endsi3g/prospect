@@ -30,7 +30,7 @@ This project does the following:
 - Advanced web research endpoint with provider routing (`duckduckgo`, `perplexity`, `firecrawl`).
 - **Core Lead Operations**: Manual creation, single delete with confirmation, and bulk deletion capabilities.
 
-## Installation
+## Installation (Local Development)
 
 ```bash
 python -m venv .venv
@@ -38,7 +38,21 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-Copy `.env.example` to `.env` and configure values.
+Copy `.env.example` to `.env`. Configure `OPENAI_API_KEY` and other providers if needed.
+
+## Quick Start (Docker)
+
+To start the entire stack (API, Frontend, Khoj AI):
+
+```powershell
+.\deploy.ps1 up
+```
+
+Verify the stack is ready:
+
+```powershell
+.\deploy.ps1 check
+```
 
 ## Environment Variables
 
@@ -105,13 +119,13 @@ python run_system.py --intent-provider none
 
 ## Admin Dashboard and APIs
 
-Start admin app:
+Standard access via `http://localhost:8000/admin`.
+
+If running locally without Docker:
 
 ```bash
 uvicorn src.admin.app:app --reload --port 8000
 ```
-
-Open `http://localhost:8000/admin` and authenticate with `ADMIN_USERNAME` / `ADMIN_PASSWORD`.
 
 Available endpoints:
 
@@ -145,49 +159,21 @@ Available endpoints:
 
 Legacy endpoints were removed. Use only `/api/v1/*` routes.
 
-## Localhost Quick Start
+## Operations
 
-Run backend + frontend:
+Use the `deploy.ps1` helper for standard operations:
 
 ```powershell
-.\scripts\ops\start_localhost_one_shot.ps1
+.\deploy.ps1 up      # Start stack
+.\deploy.ps1 down    # Stop stack
+.\deploy.ps1 logs    # View logs
+.\deploy.ps1 check   # Run healthcheck
 ```
 
-Run full localhost smoke test:
+For QA and Diagnostics:
 
-```powershell
-.\test_localhost_all_features.ps1
-```
-
-Run intelligent diagnostics:
-
-```powershell
-.\run_intelligent_tests.ps1
-```
-
-One-shot localhost startup (backend + frontend):
-
-```powershell
-.\scripts\ops\start_localhost_one_shot.ps1
-```
-
-Stop localhost processes:
-
-```powershell
-.\scripts\ops\stop_localhost.ps1
-```
-
-One-shot localhost validation (API + frontend + CRUD + import + diagnostics endpoints):
-
-```powershell
-.\test_localhost_all_features.ps1
-```
-
-Intelligent diagnostics runner (scrape + aggregate findings + optional codex autofix):
-
-```powershell
-.\run_intelligent_tests.ps1
-.\run_intelligent_tests.ps1 -AutoFix
+```bash
+python -m pytest tests/test_admin_assistant_api.py -v
 ```
 
 Example preview request:

@@ -29,6 +29,9 @@ def db_session(tmp_path):
 def client(db_session, monkeypatch):
     monkeypatch.setenv("ADMIN_USERNAME", "admin")
     monkeypatch.setenv("ADMIN_PASSWORD", "secret")
+    monkeypatch.setenv("ADMIN_AUTH_MODE", "hybrid")
+    monkeypatch.setenv("JWT_SECRET", "test-jwt-secret")
+    monkeypatch.setenv("AUTH_COOKIE_SECURE", "false")
 
     def override_get_db():
         try:
@@ -40,4 +43,3 @@ def client(db_session, monkeypatch):
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()
-

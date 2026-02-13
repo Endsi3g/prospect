@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import base64
 import csv
+import hashlib
+import hmac
 import json
 import os
 import secrets
 import time
 import uuid
+from contextlib import asynccontextmanager
 from datetime import datetime, time as datetime_time, timedelta
 from io import StringIO
 from pathlib import Path
@@ -14,8 +18,7 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, FastAPI, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, PlainTextResponse, Response
-from fastapi.security import HTTPBasic, HTTPBasicCredentials
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import func, or_, text
@@ -28,9 +31,12 @@ from ..core.db_migrations import ensure_sqlite_schema_compatibility
 from ..core.db_models import (
     DBAccountProfile,
     DBAdminRole,
+    DBAdminSession,
     DBAdminSetting,
     DBAdminUser,
     DBAdminUserRole,
+    DBAssistantAction,
+    DBAssistantRun,
     DBAuditLog,
     DBBillingInvoice,
     DBBillingProfile,
@@ -58,7 +64,6 @@ from .research_service import run_web_research
 from .stats_service import compute_core_funnel_stats, list_leads
 
 
-security = HTTPBasic()
 templates = Jinja2Templates(directory=str(Path(__file__).with_name("templates")))
 scoring_engine = ScoringEngine()
 logger = get_logger(__name__)
@@ -66,6 +71,19 @@ logger = get_logger(__name__)
 
 DEFAULT_ADMIN_USERNAME = "admin"
 DEFAULT_ADMIN_PASSWORD = "change-me"
+DEFAULT_ADMIN_AUTH_MODE = "hybrid"
+DEFAULT_ACCESS_TOKEN_TTL_MINUTES = 15
+DEFAULT_REFRESH_TOKEN_TTL_DAYS = 7
+DEFAULT_AUTH_COOKIE_SECURE = "auto"
+
+ACCESS_TOKEN_COOKIE_NAME = "admin_access_token"
+REFRESH_TOKEN_COOKIE_NAME = "admin_refresh_token"
+JWT_ALGORITHM = "HS256"
+
+if hasattr(status, "HTTP_422_UNPROCESSABLE_CONTENT"):
+    HTTP_422_STATUS = status.HTTP_422_UNPROCESSABLE_CONTENT
+else:  # pragma: no cover
+    HTTP_422_STATUS = 422
 
 DEFAULT_ADMIN_SETTINGS: dict[str, Any] = {
     "organization_name": "Prospect",
@@ -157,6 +175,7 @@ NOTIFICATION_EVENT_KEYS = {
     "report_ready",
     "report_failed",
     "billing_invoice_due",
+    "assistant_run_completed",
 }
 REPORT_FREQUENCIES = {"daily", "weekly", "monthly"}
 REPORT_FORMATS = {"pdf", "csv"}
@@ -178,28 +197,85 @@ class InMemoryRateLimiter:
                 return False
             entries.append(now)
             self._hits[key] = entries
-
-
-class InMemoryRateLimiter:
-    def __init__(self) -> None:
-        self._lock = Lock()
-        self._hits: dict[str, list[float]] = {}
-
-    def allow(self, key: str, limit: int, window_seconds: int) -> bool:
-        now = time.time()
-        window_start = now - window_seconds
-        with self._lock:
-            entries = self._hits.get(key, [])
-            entries = [stamp for stamp in entries if stamp >= window_start]
-            if len(entries) >= limit:
-                self._hits[key] = entries
-                return False
-            entries.append(now)
-            self._hits[key] = entries
             return True
 
 
+class InMemoryRequestMetrics:
+    def __init__(self) -> None:
+        self._lock = Lock()
+        self._total_requests = 0
+        self._total_errors = 0
+        self._all_latencies_ms: list[float] = []
+        self._by_endpoint: dict[str, dict[str, Any]] = {}
+        self._max_samples_per_endpoint = 512
+        self._max_global_samples = 4096
+
+    def observe(self, *, path: str, status_code: int, latency_ms: float) -> None:
+        endpoint = path or "unknown"
+        is_error = status_code >= 400
+        with self._lock:
+            self._total_requests += 1
+            if is_error:
+                self._total_errors += 1
+
+            self._all_latencies_ms.append(latency_ms)
+            if len(self._all_latencies_ms) > self._max_global_samples:
+                self._all_latencies_ms = self._all_latencies_ms[-self._max_global_samples :]
+
+            bucket = self._by_endpoint.get(endpoint)
+            if not bucket:
+                bucket = {
+                    "request_count": 0,
+                    "error_count": 0,
+                    "latencies_ms": [],
+                }
+                self._by_endpoint[endpoint] = bucket
+
+            bucket["request_count"] += 1
+            if is_error:
+                bucket["error_count"] += 1
+            bucket["latencies_ms"].append(latency_ms)
+            if len(bucket["latencies_ms"]) > self._max_samples_per_endpoint:
+                bucket["latencies_ms"] = bucket["latencies_ms"][-self._max_samples_per_endpoint :]
+
+    @staticmethod
+    def _p95(values: list[float]) -> float:
+        if not values:
+            return 0.0
+        ordered = sorted(values)
+        index = max(0, min(len(ordered) - 1, int(round(0.95 * (len(ordered) - 1)))))
+        return round(float(ordered[index]), 2)
+
+    def snapshot(self) -> dict[str, Any]:
+        with self._lock:
+            total = self._total_requests
+            errors = self._total_errors
+            global_latencies = list(self._all_latencies_ms)
+            endpoints_payload: list[dict[str, Any]] = []
+            for path, bucket in self._by_endpoint.items():
+                request_count = int(bucket["request_count"])
+                error_count = int(bucket["error_count"])
+                latencies = list(bucket["latencies_ms"])
+                endpoints_payload.append(
+                    {
+                        "path": path,
+                        "request_count": request_count,
+                        "error_rate": round((error_count / request_count) * 100, 2) if request_count else 0.0,
+                        "p95_ms": self._p95(latencies),
+                    }
+                )
+
+        endpoints_payload.sort(key=lambda item: item["request_count"], reverse=True)
+        return {
+            "request_count": total,
+            "error_rate": round((errors / total) * 100, 2) if total else 0.0,
+            "p95_ms": self._p95(global_latencies),
+            "endpoints": endpoints_payload[:50],
+        }
+
+
 rate_limiter = InMemoryRateLimiter()
+request_metrics = InMemoryRequestMetrics()
 
 
 class AdminLeadCreateRequest(BaseModel):
@@ -402,6 +478,11 @@ class AdminReportScheduleUpdateRequest(BaseModel):
     enabled: bool | None = None
 
 
+class AdminAuthLoginRequest(BaseModel):
+    username: str = Field(min_length=1)
+    password: str = Field(min_length=1)
+
+
 def _is_production() -> bool:
     env_name = (
         os.getenv("APP_ENV")
@@ -426,14 +507,27 @@ def _validate_admin_credentials_security() -> None:
             "Set ADMIN_USERNAME and ADMIN_PASSWORD."
         )
 
+    if _get_admin_auth_mode() in {"jwt", "hybrid"}:
+        jwt_secret = _get_jwt_secret()
+        if jwt_secret == _default_jwt_secret():
+            raise RuntimeError(
+                "Refusing startup in production with default JWT secret. "
+                "Set JWT_SECRET."
+            )
+
 
 def _parse_cors_origins() -> list[str]:
     raw = os.getenv(
         "ADMIN_CORS_ALLOW_ORIGINS",
-        "http://localhost:3000,http://127.0.0.1:3000",
+        "http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001",
     )
     origins = [origin.strip() for origin in raw.split(",") if origin.strip()]
-    return origins or ["http://localhost:3000", "http://127.0.0.1:3000"]
+    return origins or [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:3001",
+        "http://127.0.0.1:3001",
+    ]
 
 
 def _init_admin_db() -> None:
@@ -441,21 +535,281 @@ def _init_admin_db() -> None:
     ensure_sqlite_schema_compatibility(engine)
 
 
-def require_admin(
-    credentials: Annotated[HTTPBasicCredentials, Depends(security)],
-) -> str:
+def _get_admin_auth_mode() -> str:
+    mode = os.getenv("ADMIN_AUTH_MODE", DEFAULT_ADMIN_AUTH_MODE).strip().lower()
+    if mode in {"jwt", "hybrid", "basic"}:
+        return mode
+    return DEFAULT_ADMIN_AUTH_MODE
+
+
+def _default_jwt_secret() -> str:
+    return "dev-jwt-secret-change-me"
+
+
+def _get_jwt_secret() -> str:
+    return os.getenv("JWT_SECRET", _default_jwt_secret())
+
+
+def _get_access_token_ttl_minutes() -> int:
+    raw = os.getenv("JWT_ACCESS_TTL_MINUTES", str(DEFAULT_ACCESS_TOKEN_TTL_MINUTES))
+    try:
+        return max(1, min(int(raw), 1440))
+    except ValueError:
+        return DEFAULT_ACCESS_TOKEN_TTL_MINUTES
+
+
+def _get_refresh_token_ttl_days() -> int:
+    raw = os.getenv("JWT_REFRESH_TTL_DAYS", str(DEFAULT_REFRESH_TOKEN_TTL_DAYS))
+    try:
+        return max(1, min(int(raw), 30))
+    except ValueError:
+        return DEFAULT_REFRESH_TOKEN_TTL_DAYS
+
+
+def _get_expected_admin_credentials() -> tuple[str, str]:
     expected_username = os.getenv("ADMIN_USERNAME", DEFAULT_ADMIN_USERNAME)
     expected_password = os.getenv("ADMIN_PASSWORD", DEFAULT_ADMIN_PASSWORD)
+    return expected_username, expected_password
 
-    is_valid_user = secrets.compare_digest(credentials.username, expected_username)
-    is_valid_pass = secrets.compare_digest(credentials.password, expected_password)
-    if not (is_valid_user and is_valid_pass):
+
+def _is_valid_admin_credentials(username: str, password: str) -> bool:
+    expected_username, expected_password = _get_expected_admin_credentials()
+    is_valid_user = secrets.compare_digest(username, expected_username)
+    is_valid_pass = secrets.compare_digest(password, expected_password)
+    return bool(is_valid_user and is_valid_pass)
+
+
+def _base64url_encode(raw: bytes) -> str:
+    return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
+
+
+def _base64url_decode(raw: str) -> bytes:
+    padding = "=" * (-len(raw) % 4)
+    return base64.urlsafe_b64decode(raw + padding)
+
+
+def _encode_jwt(payload: dict[str, Any]) -> str:
+    header = {"alg": JWT_ALGORITHM, "typ": "JWT"}
+    signing_input = (
+        f"{_base64url_encode(json.dumps(header, separators=(',', ':')).encode('utf-8'))}."
+        f"{_base64url_encode(json.dumps(payload, separators=(',', ':')).encode('utf-8'))}"
+    )
+    signature = hmac.new(
+        _get_jwt_secret().encode("utf-8"),
+        signing_input.encode("ascii"),
+        hashlib.sha256,
+    ).digest()
+    return f"{signing_input}.{_base64url_encode(signature)}"
+
+
+def _decode_jwt(token: str) -> dict[str, Any]:
+    try:
+        header_b64, payload_b64, signature_b64 = token.split(".")
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token format.") from exc
+
+    signing_input = f"{header_b64}.{payload_b64}".encode("ascii")
+    expected_signature = hmac.new(
+        _get_jwt_secret().encode("utf-8"),
+        signing_input,
+        hashlib.sha256,
+    ).digest()
+    provided_signature = _base64url_decode(signature_b64)
+    if not hmac.compare_digest(expected_signature, provided_signature):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token signature.")
+
+    try:
+        payload = json.loads(_base64url_decode(payload_b64).decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token payload.") from exc
+
+    exp = payload.get("exp")
+    if not isinstance(exp, int) or exp <= int(time.time()):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Access token expired.")
+    return payload
+
+
+def _create_access_token(*, username: str, session_id: str) -> tuple[str, datetime]:
+    expires_at = datetime.utcnow() + timedelta(minutes=_get_access_token_ttl_minutes())
+    payload = {
+        "sub": username,
+        "sid": session_id,
+        "iat": int(time.time()),
+        "exp": int(expires_at.timestamp()),
+    }
+    return _encode_jwt(payload), expires_at
+
+
+def _extract_authorization_value(request: Request, prefix: str) -> str | None:
+    raw_auth = request.headers.get("authorization")
+    if not raw_auth:
+        return None
+    expected_prefix = f"{prefix} "
+    if not raw_auth.lower().startswith(expected_prefix.lower()):
+        return None
+    value = raw_auth[len(expected_prefix) :].strip()
+    return value or None
+
+
+def _extract_basic_credentials(request: Request) -> tuple[str, str] | None:
+    encoded = _extract_authorization_value(request, "Basic")
+    if not encoded:
+        return None
+    try:
+        decoded = base64.b64decode(encoded).decode("utf-8")
+        username, password = decoded.split(":", 1)
+        return username, password
+    except Exception:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid admin credentials.",
+            detail="Malformed basic authorization header.",
             headers={"WWW-Authenticate": "Basic"},
         )
-    return credentials.username
+
+
+def _extract_access_payload(request: Request) -> dict[str, Any] | None:
+    bearer = _extract_authorization_value(request, "Bearer")
+    if bearer:
+        return _decode_jwt(bearer)
+    cookie_token = request.cookies.get(ACCESS_TOKEN_COOKIE_NAME)
+    if cookie_token:
+        return _decode_jwt(cookie_token)
+    return None
+
+
+def _refresh_token_hash(token: str) -> str:
+    secret = _get_jwt_secret()
+    return hashlib.sha256(f"{secret}:{token}".encode("utf-8")).hexdigest()
+
+
+def _client_ip(request: Request) -> str:
+    forwarded_for = request.headers.get("x-forwarded-for", "")
+    if forwarded_for:
+        return forwarded_for.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def _should_use_secure_cookies() -> bool:
+    raw = os.getenv("AUTH_COOKIE_SECURE", DEFAULT_AUTH_COOKIE_SECURE).strip().lower()
+    if raw in {"1", "true", "yes"}:
+        return True
+    if raw in {"0", "false", "no"}:
+        return False
+    return _is_production()
+
+
+def _set_auth_cookies(
+    response: Response,
+    *,
+    access_token: str,
+    refresh_token: str,
+    access_expires_at: datetime,
+    refresh_expires_at: datetime,
+) -> None:
+    secure_cookie = _should_use_secure_cookies()
+    access_max_age = max(1, int((access_expires_at - datetime.utcnow()).total_seconds()))
+    refresh_max_age = max(1, int((refresh_expires_at - datetime.utcnow()).total_seconds()))
+    response.set_cookie(
+        ACCESS_TOKEN_COOKIE_NAME,
+        access_token,
+        httponly=True,
+        secure=secure_cookie,
+        samesite="lax",
+        max_age=access_max_age,
+        path="/",
+    )
+    response.set_cookie(
+        REFRESH_TOKEN_COOKIE_NAME,
+        refresh_token,
+        httponly=True,
+        secure=secure_cookie,
+        samesite="lax",
+        max_age=refresh_max_age,
+        path="/",
+    )
+
+
+def _clear_auth_cookies(response: Response) -> None:
+    response.delete_cookie(ACCESS_TOKEN_COOKIE_NAME, path="/")
+    response.delete_cookie(REFRESH_TOKEN_COOKIE_NAME, path="/")
+
+
+def _create_refresh_session(
+    db: Session,
+    *,
+    username: str,
+    refresh_token: str,
+    request: Request,
+    rotated_from_session_id: str | None = None,
+) -> DBAdminSession:
+    now = datetime.utcnow()
+    session = DBAdminSession(
+        id=str(uuid.uuid4()),
+        username=username,
+        refresh_token_hash=_refresh_token_hash(refresh_token),
+        rotated_from_session_id=rotated_from_session_id,
+        user_agent=request.headers.get("user-agent"),
+        ip_address=_client_ip(request),
+        created_at=now,
+        last_seen_at=now,
+        expires_at=now + timedelta(days=_get_refresh_token_ttl_days()),
+        revoked_at=None,
+    )
+    db.add(session)
+    db.flush()
+    return session
+
+
+def require_admin(request: Request, db: Session = Depends(get_db)) -> str:
+    auth_mode = _get_admin_auth_mode()
+
+    payload: dict[str, Any] | None = None
+    try:
+        payload = _extract_access_payload(request)
+    except HTTPException as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=exc.detail,
+            headers={"WWW-Authenticate": "Bearer"},
+        ) from exc
+
+    if payload:
+        username = str(payload.get("sub") or "").strip()
+        session_id = str(payload.get("sid") or "").strip()
+        if not username or not session_id:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid access token payload.",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        session = db.query(DBAdminSession).filter(DBAdminSession.id == session_id).first()
+        if not session or session.revoked_at is not None or session.expires_at <= datetime.utcnow():
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Session revoked or expired.",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        session.last_seen_at = datetime.utcnow()
+        db.commit()
+        return username
+
+    if auth_mode in {"basic", "hybrid"}:
+        credentials = _extract_basic_credentials(request)
+        if credentials:
+            username, password = credentials
+            if _is_valid_admin_credentials(username, password):
+                return username
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid admin credentials.",
+                headers={"WWW-Authenticate": "Basic"},
+            )
+
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Authentication required.",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
 
 
 def require_rate_limit(request: Request) -> None:
@@ -493,7 +847,7 @@ def _parse_datetime_field(raw_value: str | None, field_name: str) -> datetime | 
         return datetime.fromisoformat(normalized)
     except ValueError as exc:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=HTTP_422_STATUS,
             detail=f"Invalid datetime for {field_name}: {raw_value}",
         ) from exc
 
@@ -516,7 +870,7 @@ def _coerce_project_status(raw_status: str | None) -> str:
         if known.lower() == candidate.lower():
             return known
     raise HTTPException(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status_code=HTTP_422_STATUS,
         detail=f"Unsupported project status: {raw_status}",
     )
 
@@ -529,7 +883,7 @@ def _coerce_task_status(raw_status: str | None) -> str:
         if known.lower() == candidate.lower():
             return known
     raise HTTPException(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status_code=HTTP_422_STATUS,
         detail=f"Unsupported task status: {raw_status}",
     )
 
@@ -542,7 +896,7 @@ def _coerce_task_priority(raw_priority: str | None) -> str:
         if known.lower() == candidate.lower():
             return known
     raise HTTPException(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status_code=HTTP_422_STATUS,
         detail=f"Unsupported task priority: {raw_priority}",
     )
 
@@ -575,7 +929,7 @@ def _coerce_user_status(raw_status: str | None) -> str:
     if candidate in USER_STATUSES:
         return candidate
     raise HTTPException(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status_code=HTTP_422_STATUS,
         detail=f"Unsupported user status: {raw_status}",
     )
 
@@ -585,7 +939,7 @@ def _coerce_notification_channel(raw_channel: str | None) -> str:
     if candidate in NOTIFICATION_CHANNELS:
         return candidate
     raise HTTPException(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status_code=HTTP_422_STATUS,
         detail=f"Unsupported notification channel: {raw_channel}",
     )
 
@@ -595,7 +949,7 @@ def _coerce_notification_event(raw_event: str | None) -> str:
     if candidate in NOTIFICATION_EVENT_KEYS:
         return candidate
     raise HTTPException(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status_code=HTTP_422_STATUS,
         detail=f"Unsupported notification event key: {raw_event}",
     )
 
@@ -605,7 +959,7 @@ def _coerce_report_frequency(raw_frequency: str | None) -> str:
     if candidate in REPORT_FREQUENCIES:
         return candidate
     raise HTTPException(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status_code=HTTP_422_STATUS,
         detail=f"Unsupported report frequency: {raw_frequency}",
     )
 
@@ -615,7 +969,7 @@ def _coerce_report_format(raw_format: str | None) -> str:
     if candidate in REPORT_FORMATS:
         return candidate
     raise HTTPException(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status_code=HTTP_422_STATUS,
         detail=f"Unsupported report format: {raw_format}",
     )
 
@@ -822,7 +1176,7 @@ def _upsert_user_roles(db: Session, user: DBAdminUser, role_keys: list[str]) -> 
     missing = sorted(normalized - known_keys)
     if missing:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=HTTP_422_STATUS,
             detail=f"Unknown roles: {', '.join(missing)}",
         )
 
@@ -1664,7 +2018,7 @@ def _export_csv_payload(db: Session, *, entity: str, fields: str | None) -> tupl
     selected_entity = entity.strip().lower()
     if selected_entity not in {"leads", "tasks", "projects"}:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=HTTP_422_STATUS,
             detail=f"Unsupported export entity: {entity}",
         )
 
@@ -1822,7 +2176,7 @@ def _create_webhook_payload(
 ) -> dict[str, Any]:
     if not payload.url.startswith("http://") and not payload.url.startswith("https://"):
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=HTTP_422_STATUS,
             detail="Webhook URL must start with http:// or https://",
         )
 
@@ -2529,12 +2883,12 @@ def _parse_import_mapping(mapping_json: str | None) -> dict[str, str] | None:
         payload = json.loads(mapping_json)
     except json.JSONDecodeError as exc:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=HTTP_422_STATUS,
             detail="Invalid mapping_json payload.",
         ) from exc
     if not isinstance(payload, dict):
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=HTTP_422_STATUS,
             detail="mapping_json must be a JSON object.",
         )
     normalized: dict[str, str] = {}
@@ -2545,10 +2899,63 @@ def _parse_import_mapping(mapping_json: str | None) -> dict[str, str] | None:
     return normalized
 
 
+def _cleanup_expired_admin_sessions(db: Session) -> int:
+    now = datetime.utcnow()
+    rows = (
+        db.query(DBAdminSession)
+        .filter(
+            or_(
+                DBAdminSession.expires_at <= now,
+                DBAdminSession.revoked_at.is_not(None),
+            )
+        )
+        .all()
+    )
+    count = len(rows)
+    for row in rows:
+        db.delete(row)
+    if count:
+        db.commit()
+    return count
+
+
+def _serialize_auth_me(username: str, auth_mode: str) -> dict[str, Any]:
+    return {
+        "username": username,
+        "auth_mode": auth_mode,
+        "authenticated": True,
+    }
+
+
 def create_app() -> FastAPI:
     configure_logging()
     _validate_admin_credentials_security()
-    app = FastAPI(title="Prospect Admin Dashboard", version="1.0.0")
+
+    @asynccontextmanager
+    async def lifespan(_: FastAPI):
+        db = SessionLocal()
+        try:
+            _run_due_report_schedules_payload(db)
+            removed_sessions = _cleanup_expired_admin_sessions(db)
+            if removed_sessions:
+                logger.info(
+                    "Expired/revoked admin sessions cleaned up.",
+                    extra={"removed_sessions": removed_sessions},
+                )
+        except Exception as exc:  # pragma: no cover - defensive startup fallback
+            logger.warning(
+                "Unable to complete startup tasks.",
+                extra={"error": str(exc)},
+            )
+        finally:
+            db.close()
+        yield
+
+    app = FastAPI(
+        title="Prospect Admin Dashboard",
+        version="1.0.0",
+        lifespan=lifespan,
+    )
     _init_admin_db()
     app.add_middleware(
         CORSMiddleware,
@@ -2558,7 +2965,57 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
+    @app.middleware("http")
+    async def observe_admin_requests(request: Request, call_next):
+        started_at = time.perf_counter()
+        status_code = 500
+        try:
+            response = await call_next(request)
+            status_code = response.status_code
+        except Exception:
+            latency_ms = round((time.perf_counter() - started_at) * 1000, 2)
+            request_metrics.observe(
+                path=request.url.path,
+                status_code=status_code,
+                latency_ms=latency_ms,
+            )
+            if request.url.path.startswith("/api/v1/admin"):
+                logger.exception(
+                    "Admin request failed with unhandled exception.",
+                    extra={
+                        "method": request.method,
+                        "path": request.url.path,
+                        "status_code": status_code,
+                        "latency_ms": latency_ms,
+                        "client_ip": _client_ip(request),
+                    },
+                )
+            raise
+
+        latency_ms = round((time.perf_counter() - started_at) * 1000, 2)
+        request_metrics.observe(
+            path=request.url.path,
+            status_code=status_code,
+            latency_ms=latency_ms,
+        )
+        if request.url.path.startswith("/api/v1/admin"):
+            logger.info(
+                "admin_request",
+                extra={
+                    "method": request.method,
+                    "path": request.url.path,
+                    "status_code": status_code,
+                    "latency_ms": latency_ms,
+                    "client_ip": _client_ip(request),
+                },
+            )
+        return response
+
     api_v1 = APIRouter(prefix="/api/v1")
+    auth_v1 = APIRouter(
+        prefix="/admin/auth",
+        dependencies=[Depends(require_rate_limit)],
+    )
     admin_v1 = APIRouter(
         prefix="/admin",
         dependencies=[Depends(require_admin), Depends(require_rate_limit)],
@@ -2587,19 +3044,178 @@ def create_app() -> FastAPI:
             },
         )
 
-    @app.on_event("startup")
-    def run_due_report_schedules_on_startup() -> None:
-        db = SessionLocal()
+    @auth_v1.post("/login")
+    def login_admin_v1(
+        payload: AdminAuthLoginRequest,
+        request: Request,
+        db: Session = Depends(get_db),
+    ) -> Response:
+        username = payload.username.strip()
+        if not _is_valid_admin_credentials(username, payload.password):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid admin credentials.",
+                headers={"WWW-Authenticate": "Basic"},
+            )
+
+        refresh_token = secrets.token_urlsafe(48)
         try:
-            _run_due_report_schedules_payload(db)
-        except Exception as exc:  # pragma: no cover - defensive startup fallback
-            logger.warning("Unable to run due report schedules at startup.", extra={"error": str(exc)})
-        finally:
-            db.close()
+            session = _create_refresh_session(
+                db,
+                username=username,
+                refresh_token=refresh_token,
+                request=request,
+            )
+            access_token, access_expires_at = _create_access_token(
+                username=username,
+                session_id=session.id,
+            )
+            db.commit()
+        except SQLAlchemyError as exc:
+            db.rollback()
+            logger.exception("Failed to create admin login session.", extra={"error": str(exc)})
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Unable to create auth session.",
+            ) from exc
+
+        response = JSONResponse(
+            {
+                "ok": True,
+                "username": username,
+                "auth_mode": _get_admin_auth_mode(),
+                "access_expires_at": access_expires_at.isoformat(),
+                "refresh_expires_at": session.expires_at.isoformat(),
+            }
+        )
+        _set_auth_cookies(
+            response,
+            access_token=access_token,
+            refresh_token=refresh_token,
+            access_expires_at=access_expires_at,
+            refresh_expires_at=session.expires_at,
+        )
+        return response
+
+    @auth_v1.post("/refresh")
+    def refresh_admin_v1(
+        request: Request,
+        db: Session = Depends(get_db),
+    ) -> Response:
+        refresh_token = request.cookies.get(REFRESH_TOKEN_COOKIE_NAME)
+        if not refresh_token:
+            response = JSONResponse(
+                {"ok": False, "detail": "Missing refresh token."},
+                status_code=status.HTTP_401_UNAUTHORIZED,
+            )
+            _clear_auth_cookies(response)
+            return response
+
+        session = (
+            db.query(DBAdminSession)
+            .filter(DBAdminSession.refresh_token_hash == _refresh_token_hash(refresh_token))
+            .first()
+        )
+        if not session or session.revoked_at is not None or session.expires_at <= datetime.utcnow():
+            response = JSONResponse(
+                {"ok": False, "detail": "Refresh token expired or revoked."},
+                status_code=status.HTTP_401_UNAUTHORIZED,
+            )
+            _clear_auth_cookies(response)
+            return response
+
+        session.revoked_at = datetime.utcnow()
+        session.last_seen_at = datetime.utcnow()
+
+        rotated_refresh_token = secrets.token_urlsafe(48)
+        try:
+            rotated_session = _create_refresh_session(
+                db,
+                username=session.username,
+                refresh_token=rotated_refresh_token,
+                request=request,
+                rotated_from_session_id=session.id,
+            )
+            access_token, access_expires_at = _create_access_token(
+                username=session.username,
+                session_id=rotated_session.id,
+            )
+            db.commit()
+        except SQLAlchemyError as exc:
+            db.rollback()
+            logger.exception("Failed to rotate admin refresh session.", extra={"error": str(exc)})
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Unable to refresh auth session.",
+            ) from exc
+
+        response = JSONResponse(
+            {
+                "ok": True,
+                "username": session.username,
+                "access_expires_at": access_expires_at.isoformat(),
+                "refresh_expires_at": rotated_session.expires_at.isoformat(),
+            }
+        )
+        _set_auth_cookies(
+            response,
+            access_token=access_token,
+            refresh_token=rotated_refresh_token,
+            access_expires_at=access_expires_at,
+            refresh_expires_at=rotated_session.expires_at,
+        )
+        return response
+
+    @auth_v1.post("/logout")
+    def logout_admin_v1(
+        request: Request,
+        db: Session = Depends(get_db),
+    ) -> Response:
+        revoked = 0
+        refresh_token = request.cookies.get(REFRESH_TOKEN_COOKIE_NAME)
+        if refresh_token:
+            session = (
+                db.query(DBAdminSession)
+                .filter(DBAdminSession.refresh_token_hash == _refresh_token_hash(refresh_token))
+                .first()
+            )
+            if session and session.revoked_at is None:
+                session.revoked_at = datetime.utcnow()
+                session.last_seen_at = datetime.utcnow()
+                revoked += 1
+
+        payload = None
+        try:
+            payload = _extract_access_payload(request)
+        except HTTPException:
+            payload = None
+        if payload:
+            session_id = str(payload.get("sid") or "").strip()
+            if session_id:
+                by_id = db.query(DBAdminSession).filter(DBAdminSession.id == session_id).first()
+                if by_id and by_id.revoked_at is None:
+                    by_id.revoked_at = datetime.utcnow()
+                    by_id.last_seen_at = datetime.utcnow()
+                    revoked += 1
+
+        if revoked:
+            db.commit()
+
+        response = JSONResponse({"ok": True, "revoked": revoked})
+        _clear_auth_cookies(response)
+        return response
+
+    @auth_v1.get("/me")
+    def auth_me_v1(username: str = Depends(require_admin)) -> dict[str, Any]:
+        return _serialize_auth_me(username=username, auth_mode=_get_admin_auth_mode())
 
     @admin_v1.get("/stats")
     def get_stats_v1(db: Session = Depends(get_db)) -> dict[str, Any]:
         return _get_stats_payload(db)
+
+    @admin_v1.get("/metrics")
+    def get_metrics_v1() -> dict[str, Any]:
+        return request_metrics.snapshot()
 
     @admin_v1.get("/leads")
     def get_leads_v1(
@@ -3361,6 +3977,146 @@ def create_app() -> FastAPI:
     def preview_score_v1(lead: Lead) -> dict[str, Any]:
         return _preview_payload(lead)
 
+    # ── Assistant Prospect ────────────────────────────────────────
+    from .assistant_types import (
+        AssistantConfirmRequest,
+        AssistantRunRequest,
+        AssistantRunResponse,
+        AssistantRunListItem,
+        AssistantActionResponse,
+    )
+    from . import assistant_store as _ast_store
+    from . import assistant_service as _ast_svc
+
+    def _serialize_assistant_action(a: DBAssistantAction) -> dict:
+        return {
+            "id": a.id,
+            "action_type": a.action_type,
+            "entity_type": a.entity_type,
+            "payload": a.payload_json or {},
+            "requires_confirm": bool(a.requires_confirm),
+            "status": a.status,
+            "result": a.result_json or {},
+            "created_at": a.created_at.isoformat() if a.created_at else None,
+            "executed_at": a.executed_at.isoformat() if a.executed_at else None,
+        }
+
+    def _serialize_assistant_run(run: DBAssistantRun, include_actions: bool = False) -> dict:
+        data = {
+            "id": run.id,
+            "prompt": run.prompt,
+            "status": run.status,
+            "actor": run.actor,
+            "summary": run.summary,
+            "config": run.config_json or {},
+            "created_at": run.created_at.isoformat() if run.created_at else None,
+            "finished_at": run.finished_at.isoformat() if run.finished_at else None,
+        }
+        if include_actions:
+            data["actions"] = [_serialize_assistant_action(a) for a in (run.actions or [])]
+        else:
+            data["action_count"] = len(run.actions or [])
+        return data
+
+    def _check_prospect_enabled(db: Session) -> None:
+        setting = db.query(DBAdminSetting).filter_by(key="assistant_prospect_enabled").first()
+        if setting and setting.value_json is True:
+            return
+        if setting and isinstance(setting.value_json, dict) and setting.value_json.get("enabled") is True:
+            return
+        # Default: allow in development, block in production
+        if _is_production():
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Prospect AI is not enabled. Set assistant_prospect_enabled to true in settings.",
+            )
+
+    @admin_v1.post("/assistant/prospect/execute")
+    def assistant_prospect_execute(
+        body: AssistantRunRequest,
+        db: Session = Depends(get_db),
+        admin_user: str = Depends(require_admin),
+    ) -> dict:
+        _check_prospect_enabled(db)
+        config = {
+            "max_leads": body.max_leads,
+            "source": body.source,
+            "auto_confirm": body.auto_confirm,
+        }
+        run = _ast_store.create_run(db, prompt=body.prompt, actor=admin_user, config=config)
+        _audit_log(
+            db,
+            actor=admin_user,
+            action="assistant_run_started",
+            entity_type="assistant_run",
+            entity_id=run.id,
+            metadata={"prompt": body.prompt},
+        )
+        try:
+            plan = _ast_svc.call_khoj(body.prompt, config)
+            _ast_svc.execute_plan(db, run.id, plan, auto_confirm=body.auto_confirm)
+        except Exception as exc:
+            _ast_store.finish_run(db, run.id, status="failed", summary=str(exc))
+            logger.error("Assistant run %s failed: %s", run.id, exc)
+
+        db.refresh(run)
+        return _serialize_assistant_run(run, include_actions=True)
+
+    @admin_v1.get("/assistant/prospect/runs")
+    def assistant_prospect_list_runs(
+        limit: int = Query(default=25, ge=1, le=100),
+        offset: int = Query(default=0, ge=0),
+        db: Session = Depends(get_db),
+    ) -> dict:
+        _check_prospect_enabled(db)
+        runs = _ast_store.list_runs(db, limit=limit, offset=offset)
+        return {
+            "items": [_serialize_assistant_run(r) for r in runs],
+            "total": db.query(DBAssistantRun).count(),
+            "limit": limit,
+            "offset": offset,
+        }
+
+    @admin_v1.get("/assistant/prospect/runs/{run_id}")
+    def assistant_prospect_get_run(
+        run_id: str,
+        db: Session = Depends(get_db),
+    ) -> dict:
+        _check_prospect_enabled(db)
+        run = _ast_store.get_run(db, run_id)
+        if not run:
+            raise HTTPException(status_code=404, detail="Run not found")
+        return _serialize_assistant_run(run, include_actions=True)
+
+    @admin_v1.post("/assistant/prospect/confirm")
+    def assistant_prospect_confirm(
+        body: AssistantConfirmRequest,
+        db: Session = Depends(get_db),
+        admin_user: str = Depends(require_admin),
+    ) -> dict:
+        _check_prospect_enabled(db)
+        if body.approve:
+            results = _ast_svc.execute_confirmed_actions(db, body.action_ids)
+            _audit_log(
+                db,
+                actor=admin_user,
+                action="assistant_actions_approved",
+                entity_type="assistant_action",
+                metadata={"action_ids": body.action_ids, "results": results},
+            )
+            return {"approved": True, "results": results}
+        else:
+            count = _ast_svc.reject_actions(db, body.action_ids)
+            _audit_log(
+                db,
+                actor=admin_user,
+                action="assistant_actions_rejected",
+                entity_type="assistant_action",
+                metadata={"action_ids": body.action_ids},
+            )
+            return {"rejected": True, "count": count}
+
+    api_v1.include_router(auth_v1)
     api_v1.include_router(admin_v1)
     app.include_router(api_v1)
 

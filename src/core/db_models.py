@@ -176,6 +176,21 @@ class DBAuditLog(Base):
     created_at = Column(DateTime, default=datetime.now, index=True)
 
 
+class DBAdminSession(Base):
+    __tablename__ = "admin_auth_sessions"
+
+    id = Column(String, primary_key=True, index=True)
+    username = Column(String, nullable=False, index=True)
+    refresh_token_hash = Column(String, unique=True, nullable=False, index=True)
+    rotated_from_session_id = Column(String, nullable=True, index=True)
+    user_agent = Column(String, nullable=True)
+    ip_address = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.now, nullable=False, index=True)
+    last_seen_at = Column(DateTime, nullable=True)
+    expires_at = Column(DateTime, nullable=False, index=True)
+    revoked_at = Column(DateTime, nullable=True, index=True)
+
+
 class DBWebhookConfig(Base):
     __tablename__ = "admin_webhook_configs"
 
@@ -310,3 +325,39 @@ class DBReportRun(Base):
     created_at = Column(DateTime, default=datetime.now, nullable=False, index=True)
 
     schedule = relationship("DBReportSchedule")
+
+
+class DBAssistantRun(Base):
+    __tablename__ = "assistant_runs"
+
+    id = Column(String, primary_key=True, index=True)
+    prompt = Column(String, nullable=False)
+    status = Column(String, nullable=False, default="pending", index=True)
+    actor = Column(String, nullable=False, default="admin")
+    summary = Column(String, nullable=True)
+    config_json = Column(JSON, default=dict, nullable=False)
+    created_at = Column(DateTime, default=datetime.now, nullable=False, index=True)
+    finished_at = Column(DateTime, nullable=True)
+
+    actions = relationship(
+        "DBAssistantAction",
+        back_populates="run",
+        cascade="all, delete-orphan",
+    )
+
+
+class DBAssistantAction(Base):
+    __tablename__ = "assistant_actions"
+
+    id = Column(String, primary_key=True, index=True)
+    run_id = Column(String, ForeignKey("assistant_runs.id"), nullable=False, index=True)
+    action_type = Column(String, nullable=False)
+    entity_type = Column(String, nullable=True)
+    payload_json = Column(JSON, default=dict, nullable=False)
+    requires_confirm = Column(Boolean, default=False, nullable=False)
+    status = Column(String, nullable=False, default="pending", index=True)
+    result_json = Column(JSON, default=dict, nullable=False)
+    created_at = Column(DateTime, default=datetime.now, nullable=False)
+    executed_at = Column(DateTime, nullable=True)
+
+    run = relationship("DBAssistantRun", back_populates="actions")

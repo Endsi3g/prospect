@@ -1,0 +1,40 @@
+# Render.com Infrastructure-as-Code
+# Push to GitHub and connect to Render for auto-deploy
+# Docs: https://render.com/docs/blueprint-spec
+
+services:
+  - type: web
+    name: prospect-api
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn src.admin.app:create_app --host 0.0.0.0 --port $PORT --factory
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: ADMIN_USERNAME
+        sync: false # Set manually in Render dashboard
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: ADMIN_AUTH_MODE
+        value: jwt
+      - key: APOLLO_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: DATABASE_URL
+        fromDatabase:
+          name: prospect-db
+          property: connectionURI
+      - key: ADMIN_CORS_ALLOW_ORIGINS
+        value: https://your-admin-dashboard.netlify.app,https://your-playground.netlify.app
+    healthCheckPath: /healthz
+    autoDeploy: true
+
+databases:
+  - name: prospect-db
+    plan: free
+    databaseName: prospect
+    postgresMajorVersion: "16"

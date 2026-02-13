@@ -17,6 +17,11 @@ from ..core.models import LeadStage, LeadStatus
 
 logger = get_logger(__name__)
 
+if hasattr(status, "HTTP_422_UNPROCESSABLE_CONTENT"):
+    HTTP_422_STATUS = status.HTTP_422_UNPROCESSABLE_CONTENT
+else:  # pragma: no cover
+    HTTP_422_STATUS = 422
+
 SUPPORTED_TABLES = ("leads", "tasks", "projects")
 PREVIEW_LIMIT = 50
 MAX_CSV_BYTES = 5 * 1024 * 1024
@@ -71,7 +76,7 @@ def _decode_csv_content(content: bytes) -> str:
         except UnicodeDecodeError:
             continue
     raise HTTPException(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status_code=HTTP_422_STATUS,
         detail="Unable to decode CSV file.",
     )
 
@@ -91,7 +96,7 @@ def _parse_csv_rows(content: bytes) -> tuple[list[str], list[dict[str, str]]]:
     reader = csv.DictReader(io.StringIO(text), delimiter=delimiter)
     if not reader.fieldnames:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=HTTP_422_STATUS,
             detail="CSV headers are missing.",
         )
     headers = [header.strip() for header in reader.fieldnames if header and header.strip()]
@@ -279,7 +284,7 @@ def preview_csv_import(
     selected_table = (table or detected_table).strip().lower()
     if selected_table not in SUPPORTED_TABLES:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=HTTP_422_STATUS,
             detail=f"Unsupported table '{selected_table}'.",
         )
 

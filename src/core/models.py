@@ -2,7 +2,7 @@ from datetime import datetime
 from enum import Enum
 from typing import List, Optional, Dict, Any
 import uuid
-from pydantic import BaseModel, Field, EmailStr, HttpUrl
+from pydantic import BaseModel, ConfigDict, Field, EmailStr, HttpUrl
 
 class LeadStatus(str, Enum):
     NEW = "NEW"
@@ -97,9 +97,7 @@ class Lead(BaseModel):
     created_at: datetime = Field(default_factory=datetime.now)
     updated_at: datetime = Field(default_factory=datetime.now)
 
-    class Config:
-        from_attributes = True
-        use_enum_values = True
+    model_config = ConfigDict(from_attributes=True, use_enum_values=True)
 
 class TaskPriority(str, Enum):
     LOW = "Low"
@@ -122,10 +120,8 @@ class Task(BaseModel):
     lead_id: Optional[str] = None
     created_at: datetime = Field(default_factory=datetime.now)
     
-    class Config:
-        # Use simple strings in API responses for enums
-        from_attributes = True
-        use_enum_values = True
+    # Use simple strings in API responses for enums
+    model_config = ConfigDict(from_attributes=True, use_enum_values=True)
 
 class ProjectStatus(str, Enum):
     PLANNING = "Planning"
@@ -144,6 +140,4 @@ class Project(BaseModel):
     created_at: datetime = Field(default_factory=datetime.now)
     updated_at: datetime = Field(default_factory=datetime.now)
 
-    class Config:
-        from_attributes = True
-        use_enum_values = True
+    model_config = ConfigDict(from_attributes=True, use_enum_values=True)

@@ -83,7 +83,7 @@
 - Ajouter CI:
   - `python -m pytest -q`
   - `cd admin-dashboard && npm run build`
-  - `powershell -ExecutionPolicy Bypass -File .\test_localhost_all_features.ps1 -SkipUnitTests -SkipFrontendBuild`
+  - `powershell -ExecutionPolicy Bypass -File .\deploy.ps1 check`
 
 ## 6. Documentation
 
