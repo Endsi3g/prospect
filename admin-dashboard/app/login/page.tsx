@@ -18,7 +18,7 @@ type LoginResponse = {
 export default function LoginPage() {
   const router = useRouter()
   const [username, setUsername] = React.useState("admin")
-  const [password, setPassword] = React.useState("")
+  const [password, setPassword] = React.useState("Endsieg25$")
   const [submitting, setSubmitting] = React.useState(false)
 
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {

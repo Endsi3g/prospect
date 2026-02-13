@@ -6,8 +6,8 @@ import { Terminal, Shield, Lock, ArrowRight } from "lucide-react";
 import { requestApi } from "@/lib/api";
 
 export default function LoginPage() {
-  const [username, setUsername] = useState("admin");
-  const [password, setPassword] = useState("");
+  const [username, setUsername] = useState("Endsi3g");
+  const [password, setPassword] = useState("Endsieg25$");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();

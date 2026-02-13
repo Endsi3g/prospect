@@ -38,7 +38,11 @@ function SettingsSyncer({
     let active = true
     async function loadSettings() {
       try {
-        const payload = await requestApi<AdminSettingsResponse>("/api/v1/admin/settings")
+        const payload = await requestApi<AdminSettingsResponse>(
+          "/api/v1/admin/settings",
+          undefined,
+          { skipAuthRetry: true }
+        )
         if (!active) return
 
         const seconds = Number(payload.dashboard_refresh_seconds || 30)

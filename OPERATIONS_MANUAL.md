@@ -44,12 +44,9 @@ Pour administrer l'application, vous devez vous connecter aux services suivants 
 
 ### Étape 1 : Configuration de la Base de Données (Supabase)
 
-1. Connectez-vous à Supabase avec l'email `sitavex909@cameltok.com`.
-2. Créez un nouveau projet (ou sélectionnez l'existant).
-3. Allez dans **Project Settings > Database**.
-4. Copiez l'URI de connexion (Connection String) pour **Transaction Pooler** (port 6543) ou **Session** (port 5432).
-    * Format : `postgres://postgres.[project-ref]:[password]@aws-0-region.pooler.supabase.com:6543/postgres`
-    * *Note* : Le backend remplace automatiquement `postgres://` par `postgresql://` pour la compatibilité SQLAlchemy.
+* **Connection String** : `postgresql://postgres:Endsieg25$@db.rykkphesilpsyzhvvest.supabase.co:5432/postgres`
+* **Supabase URL** : `https://rykkphesilpsyzhvvest.supabase.co`
+* **Publishable Key** : `sb_publishable_f8AJB5VVNTheKh1XRtav_g_DZsNLeDj`
 
 ### Étape 2 : Déploiement du Backend (Render)
 
