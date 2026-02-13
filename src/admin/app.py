@@ -54,6 +54,9 @@ from ..core.db_models import (
 from ..core.logging import configure_logging, get_logger
 from ..core.models import Company, Interaction, Lead, LeadStage, LeadStatus
 from ..scoring.engine import ScoringEngine
+from . import assistant_service as _ast_svc
+from . import assistant_store as _ast_store
+from .assistant_types import AssistantConfirmRequest, AssistantRunRequest
 from .diagnostics_service import (
     get_latest_autofix,
     get_latest_diagnostics,
@@ -4009,16 +4012,6 @@ def create_app() -> FastAPI:
         return _preview_payload(lead)
 
     # ── Assistant Prospect ────────────────────────────────────────
-    from .assistant_types import (
-        AssistantConfirmRequest,
-        AssistantRunRequest,
-        AssistantRunResponse,
-        AssistantRunListItem,
-        AssistantActionResponse,
-    )
-    from . import assistant_store as _ast_store
-    from . import assistant_service as _ast_svc
-
     def _serialize_assistant_action(a: DBAssistantAction) -> dict:
         return {
             "id": a.id,
@@ -4061,11 +4054,6 @@ def create_app() -> FastAPI:
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Prospect AI is not enabled. Set assistant_prospect_enabled to true in settings.",
             )
-
-    class ResearchRequest(BaseModel):
-        query: str
-        limit: int = 5
-        provider: str = "perplexity"
 
     @admin_v1.post("/research")
     def research_query_v1(

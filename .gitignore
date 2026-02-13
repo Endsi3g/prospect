@@ -3,6 +3,7 @@ __pycache__/
 venv/
 .venv/
 .tmp_pytest/
+.pytest_tmp/
 pytest-cache-files-*/
 .pytest_cache/
 .env
