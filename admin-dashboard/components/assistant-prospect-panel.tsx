@@ -71,9 +71,9 @@ export function AssistantProspectPanel() {
         "/api/v1/admin/assistant/prospect/runs?limit=10",
         fetcher,
         {
-            refreshInterval:
+            refreshInterval: (latestData) =>
                 currentRun?.status === "running" ||
-                    runsData?.items?.some((r) => r.status === "running")
+                    latestData?.items?.some((r) => r.status === "running")
                     ? 3000
                     : 0,
         },
