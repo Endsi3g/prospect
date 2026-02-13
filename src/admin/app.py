@@ -26,7 +26,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 from starlette.requests import Request
 
-from ..core.database import Base, SessionLocal, engine, get_db
+from ..core.database import DATABASE_URL, Base, SessionLocal, engine, get_db
 from ..core.db_migrations import ensure_sqlite_schema_compatibility
 from ..core.db_models import (
     DBAccountProfile,
@@ -557,7 +557,8 @@ def _parse_cors_origins() -> list[str]:
 
 def _init_admin_db() -> None:
     Base.metadata.create_all(bind=engine)
-    ensure_sqlite_schema_compatibility(engine)
+    if DATABASE_URL.startswith("sqlite"):
+        ensure_sqlite_schema_compatibility(engine)
 
 
 def _get_admin_auth_mode() -> str:

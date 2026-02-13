@@ -18,7 +18,7 @@ export default function LoginPage() {
     setError(null);
 
     try {
-      await requestApi("/auth/login", {
+      await requestApi("/api/v1/admin/auth/login", {
         method: "POST",
         body: JSON.stringify({ username, password }),
       });
