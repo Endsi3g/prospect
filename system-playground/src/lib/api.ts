@@ -1,4 +1,4 @@
-const RAW_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
+const RAW_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "/api/proxy";
 const API_BASE_URL = RAW_BASE_URL.endsWith("/") ? RAW_BASE_URL.slice(0, -1) : RAW_BASE_URL;
 
 export async function requestApi<T>(
