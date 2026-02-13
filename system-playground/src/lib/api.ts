@@ -1,10 +1,12 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
+const RAW_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
+const API_BASE_URL = RAW_BASE_URL.endsWith("/") ? RAW_BASE_URL.slice(0, -1) : RAW_BASE_URL;
 
 export async function requestApi<T>(
     path: string,
     init?: RequestInit
 ): Promise<T> {
-    const url = `${API_BASE_URL}${path.startsWith("/") ? path : `/${path}`}`;
+    const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+    const url = `${API_BASE_URL}${normalizedPath}`;
 
     // In a browser environment, cookies are sent automatically for same-origin
     // For cross-origin or manual usage, we assume the cookie is handled or Bearer is used.
