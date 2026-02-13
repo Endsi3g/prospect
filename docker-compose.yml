@@ -10,7 +10,7 @@ services:
       - "8000:8000"
     env_file: .env
     environment:
-      DATABASE_URL: sqlite:///./prospect.db
+      DATABASE_URL: sqlite:///./data/prospect.db
       KHOJ_API_BASE_URL: http://khoj:42110
     volumes:
       - db-data:/app/data
@@ -27,7 +27,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      NEXT_PUBLIC_API_BASE_URL: http://api:8000
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
     depends_on:
       - api
     restart: unless-stopped
@@ -40,7 +40,7 @@ services:
     ports:
       - "3001:3001"
     environment:
-      NEXT_PUBLIC_API_BASE_URL: http://api:8000
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
     depends_on:
       - api
     restart: unless-stopped
@@ -51,8 +51,8 @@ services:
     ports:
       - "42110:42110"
     environment:
-      KHOJ_ADMIN_EMAIL: admin@prospect.local
-      KHOJ_ADMIN_PASSWORD: change-me-in-production
+      KHOJ_ADMIN_EMAIL: ${KHOJ_ADMIN_EMAIL:-admin@prospect.local}
+      KHOJ_ADMIN_PASSWORD: ${KHOJ_ADMIN_PASSWORD:?Set KHOJ_ADMIN_PASSWORD in .env}
       KHOJ_DEBUG: "false"
     volumes:
       - khoj-data:/root/.khoj

@@ -61,7 +61,7 @@ export default function SystemPulse() {
 
                         <div className="flex items-center justify-between">
                             <div className="flex items-center gap-4">
-                                <div className={`flex h-12 w-12 items-center justify-center rounded border ${comp.status === 'optimal' ? 'border-emerald-500/30 bg-emerald-500/5 text-emerald-500' : comp.status === 'warning' ? 'border-amber-500/30 bg-amber-500/5 text-amber-500' : 'border-rose-500/30 bg-rose-500/5 text-rose-500'}`}>
+                                <div className={`flex h-12 w-12 items-center justify-center rounded border ${comp.status === 'optimal' ? 'border-emerald-500/30 bg-emerald-500/5 text-emerald-500' : comp.status === 'warning' ? 'border-amber-500/30 bg-amber-500/5 text-amber-500' : comp.status === 'loading' ? 'border-primary/30 bg-primary/5 text-primary animate-pulse' : 'border-rose-500/30 bg-rose-500/5 text-rose-500'}`}>
                                     {comp.status === 'error' ? <CloudOff size={22} /> : comp.icon}
                                 </div>
                                 <div>
@@ -71,12 +71,12 @@ export default function SystemPulse() {
                             </div>
 
                             <div className="text-right">
-                                <div className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-widest ${comp.status === 'optimal' ? 'bg-emerald-500/10 text-emerald-500' : comp.status === 'warning' ? 'bg-amber-500/10 text-amber-500' : 'bg-rose-500/10 text-rose-500'}`}>
+                                <div className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-widest ${comp.status === 'optimal' ? 'bg-emerald-500/10 text-emerald-500' : comp.status === 'warning' ? 'bg-amber-500/10 text-amber-500' : comp.status === 'loading' ? 'bg-primary/10 text-primary animate-pulse' : 'bg-rose-500/10 text-rose-500'}`}>
                                     {comp.status}
                                 </div>
                                 <div className="mt-2 flex justify-end gap-1">
                                     {[...Array(5)].map((_, i) => (
-                                        <div key={i} className={`h-1 w-3 rounded-full ${comp.status === 'optimal' ? 'bg-emerald-500/40' : comp.status === 'warning' ? 'bg-amber-500/40' : 'bg-rose-500/40'}`} />
+                                        <div key={i} className={`h-1 w-3 rounded-full ${comp.status === 'optimal' ? 'bg-emerald-500/40' : comp.status === 'warning' ? 'bg-amber-500/40' : comp.status === 'loading' ? 'bg-primary/40 animate-pulse' : 'bg-rose-500/40'}`} />
                                     ))}
                                 </div>
                             </div>

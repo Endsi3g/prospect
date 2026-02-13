@@ -20,12 +20,18 @@ export async function requestApi<T>(
     if (!response.ok) {
         let error = `API Error ${response.status}`;
         try {
-            const body = await response.json();
+            const clone = response.clone();
+            const body = await clone.json();
             error = body.detail || error;
         } catch {
-            // ignore
+            // ignore – body may be empty or non-JSON
         }
         throw new Error(error);
+    }
+
+    // Handle empty responses (e.g., 204 No Content)
+    if (response.status === 204 || response.headers.get("content-length") === "0") {
+        return undefined as T;
     }
 
     return response.json();

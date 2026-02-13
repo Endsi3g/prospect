@@ -26,24 +26,20 @@ from .assistant_types import AssistantActionSpec, AssistantPlan
 logger = get_logger(__name__)
 
 # Actions that may run without human confirmation
+# NOTE: Only list action types that have a handler in _ACTION_HANDLERS
 SAFE_ACTION_TYPES = frozenset({
     "source_leads",
     "create_lead",
-    "update_lead",
     "create_task",
-    "update_task",
-    "create_project",
     "nurture",
     "rescore",
     "research",
 })
 
 # Actions that always require manual confirmation
+# NOTE: Only list action types that have a handler in _ACTION_HANDLERS
 DANGEROUS_ACTION_TYPES = frozenset({
     "delete_lead",
-    "delete_task",
-    "delete_project",
-    "bulk_delete",
 })
 
 
@@ -73,13 +69,14 @@ def call_khoj(prompt: str, config: dict[str, Any] | None = None) -> AssistantPla
             "Réponds UNIQUEMENT en JSON valide avec la structure: "
             '{"actions": [{"action_type": "...", "entity_type": "...", "payload": {...}, "requires_confirm": false}], '
             '"summary": "..."}\n'
-            "action_type possibles: source_leads, create_lead, create_task, nurture, rescore, delete_lead.\n"
+            "action_type possibles: source_leads, create_lead, create_task, nurture, rescore, delete_lead, research.\n"
             "entity_type possibles: lead, task, project.\n"
             "Marque requires_confirm=true pour les suppressions et actions bulk."
         )
         payload = {
             "q": prompt,
             "create_new": True,
+            "system_prompt": system_prompt,
         }
         headers = {"Content-Type": "application/json"}
         token = _khoj_token()
@@ -214,7 +211,10 @@ def _dispatch_action(db: Session, action) -> dict[str, Any]:
     """Route a single action to its handler."""
     handler = _ACTION_HANDLERS.get(action.action_type)
     if not handler:
-        return {"warning": f"Unknown action_type: {action.action_type}"}
+        raise ValueError(
+            f"Unknown action_type '{action.action_type}' "
+            f"(action_id={action.id}, payload={action.payload_json})"
+        )
     return handler(db, action.payload_json or {})
 
 
@@ -255,7 +255,7 @@ def _handle_source_leads(db: Session, payload: dict[str, Any]) -> dict[str, Any]
         return {"created": len(created_ids), "ids": created_ids}
     except Exception as exc:
         logger.error("Apify sourcing error: %s", exc)
-        return {"error": str(exc)}
+        raise
 
 
 def _handle_create_lead(db: Session, payload: dict[str, Any]) -> dict[str, Any]:
@@ -376,11 +376,10 @@ def _handle_research(db: Session, payload: dict[str, Any]) -> dict[str, Any]:
             "firecrawl": {"enabled": True},
         },
     )
-    # Could potentially save results to a note or lead details here
     return {
         "researched": True,
         "total_items": results.get("total", 0),
-        "summary": results.get("items", [])[:1],  # Return top item as summary
+        "summary": results.get("items", [])[:1],
     }
 
 

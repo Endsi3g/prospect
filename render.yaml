@@ -29,7 +29,7 @@ services:
           name: prospect-db
           property: connectionString
       - key: ADMIN_CORS_ALLOW_ORIGINS
-        value: https://your-admin-dashboard.netlify.app,https://your-playground.netlify.app
+        sync: false # Set manually in Render dashboard — do not deploy placeholder origins
     healthCheckPath: /healthz
     autoDeploy: true
 

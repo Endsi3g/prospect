@@ -63,8 +63,9 @@ export default function ManualInjector() {
                     <form onSubmit={handleInject} className="space-y-4">
                         <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-1">
-                                <label className="text-[10px] font-bold uppercase text-primary/70">Prénom</label>
+                                <label htmlFor="inject-first-name" className="text-[10px] font-bold uppercase text-primary/70">Prénom</label>
                                 <input
+                                    id="inject-first-name"
                                     type="text"
                                     value={payload.first_name}
                                     onChange={(e) => setPayload({ ...payload, first_name: e.target.value })}
@@ -74,8 +75,9 @@ export default function ManualInjector() {
                                 />
                             </div>
                             <div className="space-y-1">
-                                <label className="text-[10px] font-bold uppercase text-primary/70">Nom</label>
+                                <label htmlFor="inject-last-name" className="text-[10px] font-bold uppercase text-primary/70">Nom</label>
                                 <input
+                                    id="inject-last-name"
                                     type="text"
                                     value={payload.last_name}
                                     onChange={(e) => setPayload({ ...payload, last_name: e.target.value })}
@@ -87,8 +89,9 @@ export default function ManualInjector() {
                         </div>
 
                         <div className="space-y-1">
-                            <label className="text-[10px] font-bold uppercase text-primary/70">Email</label>
+                            <label htmlFor="inject-email" className="text-[10px] font-bold uppercase text-primary/70">Email</label>
                             <input
+                                id="inject-email"
                                 type="email"
                                 value={payload.email}
                                 onChange={(e) => setPayload({ ...payload, email: e.target.value })}
@@ -99,8 +102,9 @@ export default function ManualInjector() {
                         </div>
 
                         <div className="space-y-1">
-                            <label className="text-[10px] font-bold uppercase text-primary/70">Entreprise</label>
+                            <label htmlFor="inject-company" className="text-[10px] font-bold uppercase text-primary/70">Entreprise</label>
                             <input
+                                id="inject-company"
                                 type="text"
                                 value={payload.company_name}
                                 onChange={(e) => setPayload({ ...payload, company_name: e.target.value })}
@@ -111,8 +115,9 @@ export default function ManualInjector() {
                         </div>
 
                         <div className="space-y-1">
-                            <label className="text-[10px] font-bold uppercase text-primary/70">Détails JSON (Comportement/Signaux)</label>
+                            <label htmlFor="inject-details" className="text-[10px] font-bold uppercase text-primary/70">Détails JSON (Comportement/Signaux)</label>
                             <textarea
+                                id="inject-details"
                                 value={payload.details}
                                 onChange={(e) => setPayload({ ...payload, details: e.target.value })}
                                 rows={6}

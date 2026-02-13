@@ -70,13 +70,19 @@ export function AssistantProspectPanel() {
     const { data: runsData, isLoading: runsLoading } = useSWR<RunsResponse>(
         "/api/v1/admin/assistant/prospect/runs?limit=10",
         fetcher,
-        { refreshInterval: currentRun?.status === "running" ? 3000 : 0 },
+        {
+            refreshInterval:
+                currentRun?.status === "running" ||
+                    runsData?.items?.some((r) => r.status === "running")
+                    ? 3000
+                    : 0,
+        },
     )
 
     const { data: runDetail, isLoading: detailLoading } = useSWR<RunDetail>(
         selectedRunId ? `/api/v1/admin/assistant/prospect/runs/${selectedRunId}` : null,
         fetcher,
-        { refreshInterval: 0 },
+        { refreshInterval: runDetail?.status === "running" ? 3000 : 0 },
     )
 
     // When a run finishes executing, show it

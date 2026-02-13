@@ -35,8 +35,10 @@ export default function LoginPage() {
         { skipAuthRetry: true },
       )
       if (payload.ok) {
-        toast.success("Connexion admin reussie.")
+        toast.success("Connexion admin réussie.")
         router.push("/dashboard")
+      } else {
+        toast.error((payload as unknown as { message?: string }).message || "Identifiants invalides.")
       }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Connexion impossible")
@@ -50,7 +52,7 @@ export default function LoginPage() {
       <Card className="w-full max-w-md">
         <CardHeader>
           <CardTitle>Connexion Admin</CardTitle>
-          <CardDescription>Authentifiez-vous pour acceder a la console Prospect.</CardDescription>
+          <CardDescription>Authentifiez-vous pour accéder à la console Prospect.</CardDescription>
         </CardHeader>
         <CardContent>
           <form className="space-y-4" onSubmit={onSubmit}>

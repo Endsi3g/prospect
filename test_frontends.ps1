@@ -42,9 +42,9 @@ foreach ($app in $apps) {
         # ── Install ──────────────────────────────
         if (-not $SkipInstall) {
             Write-Host "  [1/3] Installing dependencies..." -ForegroundColor Gray
-            npm install --prefer-offline --no-audit --no-fund 2>&1 | Out-Null
+            $installOutput = npm install --prefer-offline --no-audit --no-fund 2>&1
             if ($LASTEXITCODE -ne 0) {
-                throw "npm install failed"
+                throw "npm install failed:`n$($installOutput | Out-String)"
             }
             Write-Host "  [1/3] Dependencies OK" -ForegroundColor Green
         }

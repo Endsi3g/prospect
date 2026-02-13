@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Activity, Server, Database, Brain, ArrowUpRight } from "lucide-react";
 import { motion } from "framer-motion";
+import Link from "next/link";
 
 export default function CommandCenter() {
     const [timestamp, setTimestamp] = useState("");
@@ -65,24 +66,24 @@ export default function CommandCenter() {
                     </div>
 
                     <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-                        <div className="rounded-lg border border-border bg-background/50 p-6 flex flex-col justify-between group cursor-pointer hover:border-primary/50 transition-colors">
+                        <Link href="/dashboard/injector" className="rounded-lg border border-border bg-background/50 p-6 flex flex-col justify-between group cursor-pointer hover:border-primary/50 transition-colors">
                             <div>
                                 <h3 className="text-lg font-bold">Manual Injector</h3>
-                                <p className="mt-2 text-sm text-foreground/50">Forcer l’insertion d’un profil complexe pour tester les règles de scoring.</p>
+                                <p className="mt-2 text-sm text-foreground/50">Force-insert a complex profile to stress-test scoring rules.</p>
                             </div>
                             <div className="mt-4 flex items-center text-primary text-xs font-bold uppercase tracking-widest">
-                                Ouvrir <ArrowUpRight size={14} className="ml-1" />
+                                Open <ArrowUpRight size={14} className="ml-1" />
                             </div>
-                        </div>
-                        <div className="rounded-lg border border-border bg-background/50 p-6 flex flex-col justify-between group cursor-pointer hover:border-primary/50 transition-colors">
+                        </Link>
+                        <Link href="/dashboard/lab" className="rounded-lg border border-border bg-background/50 p-6 flex flex-col justify-between group cursor-pointer hover:border-primary/50 transition-colors">
                             <div>
                                 <h3 className="text-lg font-bold">Logic Lab</h3>
-                                <p className="mt-2 text-sm text-foreground/50">Exécuter des simulations de nurturing et de relance IA en bac à sable.</p>
+                                <p className="mt-2 text-sm text-foreground/50">Run AI nurturing and outreach simulations in a sandbox environment.</p>
                             </div>
                             <div className="mt-4 flex items-center text-primary text-xs font-bold uppercase tracking-widest">
-                                Ouvrir <ArrowUpRight size={14} className="ml-1" />
+                                Open <ArrowUpRight size={14} className="ml-1" />
                             </div>
-                        </div>
+                        </Link>
                     </div>
                 </div>
 

@@ -200,8 +200,8 @@ export default function AssistantPage() {
                     <div className="rounded-lg border border-amber-300 bg-amber-50 p-3">
                       <p className="text-xs font-medium text-amber-900">Provider warnings:</p>
                       <ul className="list-disc pl-5 text-xs text-amber-900">
-                        {webResearch.warnings.map((warning) => (
-                          <li key={warning}>{warning}</li>
+                        {webResearch.warnings.map((warning, index) => (
+                          <li key={`${warning}-${index}`}>{warning}</li>
                         ))}
                       </ul>
                     </div>

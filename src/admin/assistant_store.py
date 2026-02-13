@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Sequence
 
 from sqlalchemy.orm import Session
@@ -58,7 +58,7 @@ def finish_run(
     if run:
         run.status = status
         run.summary = summary
-        run.finished_at = datetime.now()
+        run.finished_at = datetime.now(timezone.utc)
         db.commit()
 
 
@@ -118,7 +118,7 @@ def update_action_status(
         if result_json is not None:
             action.result_json = result_json
         if status in ("executed", "failed"):
-            action.executed_at = datetime.now()
+            action.executed_at = datetime.now(timezone.utc)
         db.commit()
 
 

@@ -109,6 +109,7 @@ class TestAssistantGetRun:
             json={"prompt": "Test run for detail", "max_leads": 5},
             auth=auth,
         )
+        assert create_resp.status_code == 200, f"Setup failed: {create_resp.status_code} {create_resp.text}"
         run_id = create_resp.json()["id"]
 
         resp = client.get(f"/api/v1/admin/assistant/prospect/runs/{run_id}", auth=auth)

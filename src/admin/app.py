@@ -201,6 +201,8 @@ class InMemoryRateLimiter:
 
 
 class InMemoryRequestMetrics:
+    _DYNAMIC_SEGMENT_RE = None  # Lazy-compiled regex
+
     def __init__(self) -> None:
         self._lock = Lock()
         self._total_requests = 0
@@ -209,9 +211,22 @@ class InMemoryRequestMetrics:
         self._by_endpoint: dict[str, dict[str, Any]] = {}
         self._max_samples_per_endpoint = 512
         self._max_global_samples = 4096
+        self._max_endpoints = 1024
+
+    @classmethod
+    def _normalize_path(cls, path: str) -> str:
+        """Replace dynamic path segments (UUIDs, numeric IDs) with placeholders."""
+        import re
+        if cls._DYNAMIC_SEGMENT_RE is None:
+            cls._DYNAMIC_SEGMENT_RE = re.compile(
+                r"/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                r"|/\d+",
+                re.IGNORECASE,
+            )
+        return cls._DYNAMIC_SEGMENT_RE.sub("/:id", path)
 
     def observe(self, *, path: str, status_code: int, latency_ms: float) -> None:
-        endpoint = path or "unknown"
+        endpoint = self._normalize_path(path) if path else "unknown"
         is_error = status_code >= 400
         with self._lock:
             self._total_requests += 1
@@ -224,6 +239,10 @@ class InMemoryRequestMetrics:
 
             bucket = self._by_endpoint.get(endpoint)
             if not bucket:
+                # Evict least-used endpoint if at capacity
+                if len(self._by_endpoint) >= self._max_endpoints:
+                    victim = min(self._by_endpoint, key=lambda k: self._by_endpoint[k]["request_count"])
+                    del self._by_endpoint[victim]
                 bucket = {
                     "request_count": 0,
                     "error_count": 0,
@@ -795,8 +814,11 @@ def require_admin(request: Request, db: Session = Depends(get_db)) -> str:
                 detail="Session revoked or expired.",
                 headers={"WWW-Authenticate": "Bearer"},
             )
-        session.last_seen_at = datetime.utcnow()
-        db.commit()
+        # Only persist last_seen_at if stale by 2+ minutes to avoid write-per-request
+        _now = datetime.utcnow()
+        if not session.last_seen_at or (_now - session.last_seen_at).total_seconds() > 120:
+            session.last_seen_at = _now
+            db.commit()
         return username
 
     if auth_mode in {"basic", "hybrid"}:

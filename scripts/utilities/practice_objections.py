@@ -2,10 +2,13 @@ import sys
 import os
 import random
 import time
+from pathlib import Path
 from typing import List
 
-# Add project root to path
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+# Add project root to path so `src.*` imports resolve
+_project_root = str(Path(__file__).resolve().parents[2])
+if _project_root not in sys.path:
+    sys.path.insert(0, _project_root)
 
 from src.sales.elite_tactics import ObjectionHandler
 
@@ -40,7 +43,7 @@ def main():
     print("Bienvenue dans le simulateur de traitement des objections.")
     print("Tapez 'quit' pour quitter.\n")
 
-    manual_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "docs", "playbooks", "ELITE_SALES_MANUAL.md")
+    manual_path = os.path.join(_project_root, "docs", "playbooks", "ELITE_SALES_MANUAL.md")
     tips = load_tips(manual_path)
     
     objection_types = list(ObjectionHandler.OBJECTIONS.keys())

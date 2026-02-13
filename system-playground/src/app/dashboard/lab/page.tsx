@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Beaker, Brain, Play, RotateCcw, CheckCircle2, AlertCircle, Info } from "lucide-react";
 import { requestApi } from "@/lib/api";
 
@@ -9,6 +9,7 @@ export default function LogicLab() {
     const [loading, setLoading] = useState(false);
     const [result, setResult] = useState<any>(null);
     const [error, setError] = useState<string | null>(null);
+    const abortRef = useRef<AbortController | null>(null);
 
     const simulations = [
         {
@@ -39,6 +40,11 @@ export default function LogicLab() {
     ];
 
     const handleSimulate = async (sim: any) => {
+        // Abort any in-flight request
+        abortRef.current?.abort();
+        const controller = new AbortController();
+        abortRef.current = controller;
+
         setActiveSimulation(sim.id);
         setLoading(true);
         setError(null);
@@ -47,13 +53,19 @@ export default function LogicLab() {
         try {
             const res = await requestApi(sim.endpoint, {
                 method: sim.method,
-                body: sim.defaultPayload ? JSON.stringify(sim.defaultPayload) : undefined
+                body: sim.defaultPayload ? JSON.stringify(sim.defaultPayload) : undefined,
+                signal: controller.signal,
             });
-            setResult(res);
+            if (!controller.signal.aborted) {
+                setResult(res);
+            }
         } catch (err: any) {
+            if (err.name === "AbortError") return;
             setError(err.message || "Erreur lors de la simulation");
         } finally {
-            setLoading(false);
+            if (!controller.signal.aborted) {
+                setLoading(false);
+            }
         }
     };
 
@@ -86,6 +98,7 @@ export default function LogicLab() {
                                 <button
                                     onClick={() => handleSimulate(sim)}
                                     disabled={loading}
+                                    aria-label={`Run ${sim.title}`}
                                     className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground transition-all disabled:opacity-30"
                                 >
                                     <Play size={14} />

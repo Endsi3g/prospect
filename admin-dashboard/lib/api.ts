@@ -12,15 +12,20 @@ type RequestApiOptions = {
 async function parseErrorMessage(response: Response, normalizedPath: string): Promise<string> {
   let message = `API request failed (${response.status}) for ${normalizedPath}`
   try {
-    const payload = (await response.json()) as { detail?: string }
+    const clone = response.clone()
+    const payload = (await clone.json()) as { detail?: string }
     if (payload?.detail) {
       message = payload.detail
     }
     return message
   } catch {
-    const text = await response.text()
-    if (text) {
-      message = text
+    try {
+      const text = await response.text()
+      if (text) {
+        message = text
+      }
+    } catch {
+      // body already consumed or empty — use default message
     }
     return message
   }
@@ -59,7 +64,7 @@ export async function requestApi<T>(
   if (response.status === 401 && !isAuthEndpoint && !options?.skipAuthRetry) {
     const refreshed = await refreshAdminSession()
     if (refreshed) {
-      return requestApi<T>(normalizedPath, init, { skipAuthRetry: true })
+      return requestApi<T>(path, init, { skipAuthRetry: true })
     }
   }
 
@@ -67,6 +72,7 @@ export async function requestApi<T>(
     const message = await parseErrorMessage(response, normalizedPath)
     if (response.status === 401 && typeof window !== "undefined" && !isAuthEndpoint) {
       window.location.href = "/login"
+      return undefined as T
     }
     throw new Error(message)
   }

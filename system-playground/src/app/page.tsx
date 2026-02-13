@@ -51,10 +51,11 @@ export default function LoginPage() {
 
           <form onSubmit={handleLogin} className="space-y-6">
             <div className="space-y-2">
-              <label className="text-xs font-semibold uppercase tracking-wider text-primary/70">Identifiant</label>
+              <label htmlFor="login-username" className="text-xs font-semibold uppercase tracking-wider text-primary/70">Identifiant</label>
               <div className="relative">
                 <Terminal className="absolute left-3 top-1/2 -translate-y-1/2 text-primary/50" size={16} />
                 <input
+                  id="login-username"
                   type="text"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
@@ -66,10 +67,11 @@ export default function LoginPage() {
             </div>
 
             <div className="space-y-2">
-              <label className="text-xs font-semibold uppercase tracking-wider text-primary/70">Code d&apos;accès</label>
+              <label htmlFor="login-password" className="text-xs font-semibold uppercase tracking-wider text-primary/70">Code d&apos;accès</label>
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-primary/50" size={16} />
                 <input
+                  id="login-password"
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
@@ -81,7 +83,7 @@ export default function LoginPage() {
             </div>
 
             {error && (
-              <div className="rounded border border-accent/20 bg-accent/5 p-3 text-sm text-accent">
+              <div role="alert" className="rounded border border-accent/20 bg-accent/5 p-3 text-sm text-accent">
                 {error}
               </div>
             )}
