@@ -10,6 +10,7 @@ import { SiteHeader } from "@/components/site-header"
 import { SyncStatus } from "@/components/sync-status"
 import { ErrorState } from "@/components/ui/error-state"
 import { Skeleton } from "@/components/ui/skeleton"
+import { useLoadingTimeout } from "@/hooks/use-loading-timeout"
 import { fetchApi } from "@/lib/api"
 import {
   SidebarInset,
@@ -37,6 +38,7 @@ const fetcher = <T,>(path: string) => fetchApi<T>(path)
 
 export default function DashboardPage() {
   const { data: stats, error, isLoading, mutate, isValidating } = useSWR<DashboardStats>("/api/v1/admin/stats", fetcher)
+  const loadingTimedOut = useLoadingTimeout(isLoading, 12_000)
   const [updatedAt, setUpdatedAt] = React.useState<Date | null>(null)
 
   React.useEffect(() => {
@@ -62,7 +64,7 @@ export default function DashboardPage() {
               <div className="px-4 lg:px-6">
                 <SyncStatus updatedAt={updatedAt} isValidating={isValidating} onRefresh={() => void mutate()} />
               </div>
-              {isLoading ? (
+              {isLoading && !loadingTimedOut ? (
                 <div className="space-y-4 px-4 lg:px-6">
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
                     <Skeleton className="h-28 w-full" />
@@ -73,15 +75,24 @@ export default function DashboardPage() {
                   <Skeleton className="h-[320px] w-full" />
                 </div>
               ) : null}
-              {!isLoading && error ? (
+              {(error || loadingTimedOut) ? (
                 <div className="px-4 lg:px-6">
                   <ErrorState
                     title="Impossible de charger les statistiques du tableau de bord."
+                    description={
+                      loadingTimedOut
+                        ? "Le chargement prend trop de temps. Verifiez API_BASE_URL et la disponibilite du backend."
+                        : error instanceof Error
+                          ? error.message
+                          : "Aucune donnee n'a pu etre recuperer pour le tableau de bord."
+                    }
+                    secondaryLabel="Verifier Parametres"
+                    secondaryHref="/settings"
                     onRetry={() => void mutate()}
                   />
                 </div>
               ) : null}
-              {!isLoading && !error ? (
+              {!isLoading && !error && !loadingTimedOut ? (
                 <>
                   <SectionCards stats={stats} />
                   <div className="px-4 lg:px-6">

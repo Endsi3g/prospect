@@ -8,6 +8,7 @@ import { usePathname } from "next/navigation"
 import {
   SidebarGroup,
   SidebarGroupContent,
+  SidebarGroupLabel,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
@@ -28,6 +29,7 @@ export function NavSecondary({
 
   return (
     <SidebarGroup {...props}>
+      <SidebarGroupLabel>Support</SidebarGroupLabel>
       <SidebarGroupContent>
         <SidebarMenu>
           {items.map((item) => (

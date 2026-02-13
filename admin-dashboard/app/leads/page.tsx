@@ -6,13 +6,13 @@ import useSWR from "swr"
 import { AppSidebar } from "@/components/app-sidebar"
 import { ExportCsvButton } from "@/components/export-csv-button"
 import { ImportCsvSheet } from "@/components/import-csv-sheet"
-import { AddLeadSheet } from "@/components/add-lead-sheet"
 import { Lead, LeadsTable } from "@/components/leads-table"
 import { SiteHeader } from "@/components/site-header"
 import { SyncStatus } from "@/components/sync-status"
 import { EmptyState } from "@/components/ui/empty-state"
 import { ErrorState } from "@/components/ui/error-state"
 import { Skeleton } from "@/components/ui/skeleton"
+import { useLoadingTimeout } from "@/hooks/use-loading-timeout"
 import { fetchApi } from "@/lib/api"
 import {
   SidebarInset,
@@ -142,6 +142,7 @@ export default function LeadsPage() {
     leadsPath,
     fetcher,
   )
+  const loadingTimedOut = useLoadingTimeout(isLoading, 12_000)
   const [updatedAt, setUpdatedAt] = React.useState<Date | null>(null)
 
   React.useEffect(() => {
@@ -186,27 +187,35 @@ export default function LeadsPage() {
           <div className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="text-3xl font-bold tracking-tight">Leads</h2>
             <div className="flex flex-wrap items-center gap-2">
-              <AddLeadSheet />
               <ExportCsvButton entity="leads" />
               <ImportCsvSheet onImported={() => void mutate()} />
             </div>
           </div>
           <SyncStatus updatedAt={updatedAt} onRefresh={() => void mutate()} />
-          {isLoading ? (
+          {isLoading && !loadingTimedOut ? (
             <div className="space-y-3">
               <Skeleton className="h-10 w-full" />
               <Skeleton className="h-10 w-full" />
               <Skeleton className="h-10 w-full" />
             </div>
-          ) : error ? (
+          ) : error || loadingTimedOut ? (
             <ErrorState
-              title="Erreur de chargement des leads."
+              title="Impossible de charger les leads."
+              description={
+                loadingTimedOut
+                  ? "Le chargement prend trop de temps. Verifiez la connectivite API et reessayez."
+                  : error instanceof Error
+                    ? error.message
+                    : "La liste des leads est indisponible pour le moment."
+              }
+              secondaryLabel="Ouvrir Parametres"
+              secondaryHref="/settings"
               onRetry={() => void mutate()}
             />
           ) : (data?.total || 0) === 0 ? (
             <EmptyState
               title="Aucun lead disponible"
-              description="Utilisez 'Creation rapide de lead' ou importez un CSV pour demarrer."
+              description="Utilisez 'Creation rapide de lead' dans la sidebar ou importez un CSV pour demarrer."
             />
           ) : (
             <LeadsTable

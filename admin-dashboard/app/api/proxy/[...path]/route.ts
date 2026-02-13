@@ -1,8 +1,16 @@
 import { NextRequest } from "next/server"
 
-function getBaseUrl(): string {
-  const raw = process.env.API_BASE_URL || "http://localhost:8000"
-  return raw.endsWith("/") ? raw.slice(0, -1) : raw
+function getBaseUrl(): string | null {
+  const configured = process.env.API_BASE_URL
+  if (configured && configured.trim()) {
+    return configured.endsWith("/") ? configured.slice(0, -1) : configured
+  }
+
+  if (process.env.NODE_ENV === "production") {
+    return null
+  }
+
+  return "http://localhost:8000"
 }
 
 function getOptionalAuthHeader(): string | null {
@@ -24,6 +32,15 @@ async function forwardRequest(
   path: string[],
 ): Promise<Response> {
   const baseUrl = getBaseUrl()
+  if (!baseUrl) {
+    return Response.json(
+      {
+        detail:
+          "Proxy API non configure. Definissez API_BASE_URL dans l'environnement Vercel.",
+      },
+      { status: 500 },
+    )
+  }
   const normalizedPath = path.join("/")
   const targetUrl = `${baseUrl}/${normalizedPath}${request.nextUrl.search}`
 

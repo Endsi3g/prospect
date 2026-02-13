@@ -11,6 +11,7 @@ import { Task, TasksTable } from "@/components/tasks-table"
 import { EmptyState } from "@/components/ui/empty-state"
 import { ErrorState } from "@/components/ui/error-state"
 import { Skeleton } from "@/components/ui/skeleton"
+import { useLoadingTimeout } from "@/hooks/use-loading-timeout"
 import { fetchApi } from "@/lib/api"
 import {
   SidebarInset,
@@ -55,6 +56,7 @@ export default function TasksPage() {
     `/api/v1/admin/tasks?page=${page}&page_size=${pageSize}&q=${encodeURIComponent(debouncedSearch)}&status=${encodeURIComponent(queryStatus)}&sort=${sort}&order=${order}`,
     fetcher,
   )
+  const loadingTimedOut = useLoadingTimeout(isLoading, 12_000)
   const [updatedAt, setUpdatedAt] = React.useState<Date | null>(null)
 
   React.useEffect(() => {
@@ -91,16 +93,25 @@ export default function TasksPage() {
             <h2 className="text-3xl font-bold tracking-tight">Taches</h2>
             <ExportCsvButton entity="tasks" />
           </div>
-          <SyncStatus updatedAt={updatedAt} />
-          {isLoading ? (
+          <SyncStatus updatedAt={updatedAt} onRefresh={() => void mutate()} />
+          {isLoading && !loadingTimedOut ? (
             <div className="space-y-3">
               <Skeleton className="h-10 w-full" />
               <Skeleton className="h-10 w-full" />
               <Skeleton className="h-10 w-full" />
             </div>
-          ) : error ? (
+          ) : error || loadingTimedOut ? (
             <ErrorState
-              title="Erreur de chargement des taches."
+              title="Impossible de charger les taches."
+              description={
+                loadingTimedOut
+                  ? "Le chargement depasse le delai attendu. Verifiez la sante de l'API puis reessayez."
+                  : error instanceof Error
+                    ? error.message
+                    : "La liste des taches est temporairement indisponible."
+              }
+              secondaryLabel="Ouvrir Parametres"
+              secondaryHref="/settings"
               onRetry={() => void mutate()}
             />
           ) : (data?.total || 0) === 0 ? (

@@ -20,6 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
+import { useLoadingTimeout } from "@/hooks/use-loading-timeout"
 import {
   SidebarInset,
   SidebarProvider,
@@ -56,10 +57,11 @@ export default function TeamSettingsPage() {
     "/api/v1/admin/users",
     fetcher,
   )
-  const { data: rolesData, error: rolesError, isLoading: rolesLoading } = useSWR<RolesResponse>(
+  const { data: rolesData, error: rolesError, isLoading: rolesLoading, mutate: mutateRoles } = useSWR<RolesResponse>(
     "/api/v1/admin/roles",
     fetcher,
   )
+  const loadingTimedOut = useLoadingTimeout(usersLoading || rolesLoading, 12_000)
 
   const [email, setEmail] = React.useState("")
   const [displayName, setDisplayName] = React.useState("")
@@ -187,23 +189,40 @@ export default function TeamSettingsPage() {
             </CardContent>
           </Card>
 
-          {usersLoading || rolesLoading ? (
+          {(usersLoading || rolesLoading) && !loadingTimedOut ? (
             <div className="space-y-2">
               <Skeleton className="h-10 w-full" />
               <Skeleton className="h-10 w-full" />
               <Skeleton className="h-10 w-full" />
             </div>
           ) : null}
-          {!usersLoading && (usersError || rolesError) ? (
-            <ErrorState title="Impossible de charger les utilisateurs." onRetry={() => void mutateUsers()} />
-          ) : null}
-          {!usersLoading && !usersError && users.length === 0 ? (
-            <EmptyState
-              title="Aucun utilisateur invite"
-              description="Invitez votre equipe pour activer la gestion de roles."
+          {(!usersLoading && (usersError || rolesError)) || loadingTimedOut ? (
+            <ErrorState
+              title="Impossible de charger les membres de l'equipe."
+              description={
+                loadingTimedOut
+                  ? "Le chargement est trop long. Verifiez la disponibilite de l'API utilisateurs."
+                  : usersError instanceof Error
+                    ? usersError.message
+                    : rolesError instanceof Error
+                      ? rolesError.message
+                      : "Les informations equipe/roles sont indisponibles."
+              }
+              secondaryLabel="Retour Parametres"
+              secondaryHref="/settings"
+              onRetry={() => {
+                void mutateUsers()
+                void mutateRoles()
+              }}
             />
           ) : null}
-          {!usersLoading && !usersError && users.length > 0 ? (
+          {!usersLoading && !usersError && !loadingTimedOut && users.length === 0 ? (
+            <EmptyState
+              title="Aucun membre pour le moment"
+              description="Invitez votre equipe pour activer la gestion des roles et permissions."
+            />
+          ) : null}
+          {!usersLoading && !usersError && !loadingTimedOut && users.length > 0 ? (
             <Card>
               <CardHeader>
                 <CardTitle>Utilisateurs</CardTitle>

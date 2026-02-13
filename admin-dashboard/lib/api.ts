@@ -1,33 +1,93 @@
 const DEFAULT_BASE_URL = "/api/proxy"
 
-export function getApiBaseUrl(): string {
-  const raw = process.env.NEXT_PUBLIC_API_BASE_URL || DEFAULT_BASE_URL
-  return raw.endsWith("/") ? raw.slice(0, -1) : raw
-}
-
 type RequestApiOptions = {
   skipAuthRetry?: boolean
 }
 
-async function parseErrorMessage(response: Response, normalizedPath: string): Promise<string> {
-  let message = `API request failed (${response.status}) for ${normalizedPath}`
+type ErrorPayload = {
+  detail?: string
+  message?: string
+}
+
+function isMockEnabled(): boolean {
+  return process.env.NEXT_PUBLIC_USE_MOCK === "true"
+}
+
+function normalizeBaseUrl(raw: string): string {
+  return raw.endsWith("/") ? raw.slice(0, -1) : raw
+}
+
+export function getApiBaseUrl(): string {
+  const raw = process.env.NEXT_PUBLIC_API_BASE_URL || DEFAULT_BASE_URL
+  return normalizeBaseUrl(raw)
+}
+
+function friendlyProxyHint(): string {
+  return "Verifiez API_BASE_URL sur Vercel et que le backend FastAPI est en ligne."
+}
+
+function mapFriendlyError({
+  status,
+  detail,
+  normalizedPath,
+}: {
+  status: number
+  detail: string
+  normalizedPath: string
+}): string {
+  const cleanDetail = detail.trim()
+  const lowerDetail = cleanDetail.toLowerCase()
+
+  if (lowerDetail.includes("[mock]")) {
+    return "Mode mock actif, mais donnees de test introuvables pour cet ecran."
+  }
+
+  if (status === 502) {
+    return `API indisponible via proxy (${normalizedPath}). ${friendlyProxyHint()}`
+  }
+
+  if (status === 504) {
+    return `Timeout proxy vers l'API (${normalizedPath}). ${friendlyProxyHint()}`
+  }
+
+  if (status >= 500 && lowerDetail.includes("upstream")) {
+    return `${cleanDetail} ${friendlyProxyHint()}`
+  }
+
+  if (status >= 400 && cleanDetail) {
+    return cleanDetail
+  }
+
+  return `Requete API en echec (${status}) sur ${normalizedPath}.`
+}
+
+async function parseErrorMessage(
+  response: Response,
+  normalizedPath: string,
+): Promise<string> {
   try {
-    const clone = response.clone()
-    const payload = (await clone.json()) as { detail?: string }
-    if (payload?.detail) {
-      message = payload.detail
-    }
-    return message
+    const payload = (await response.clone().json()) as ErrorPayload
+    const detail = payload.detail || payload.message || ""
+    return mapFriendlyError({
+      status: response.status,
+      detail,
+      normalizedPath,
+    })
   } catch {
     try {
       const text = await response.text()
-      if (text) {
-        message = text
-      }
+      return mapFriendlyError({
+        status: response.status,
+        detail: text || "",
+        normalizedPath,
+      })
     } catch {
-      // Body may be already consumed or empty.
+      return mapFriendlyError({
+        status: response.status,
+        detail: "",
+        normalizedPath,
+      })
     }
-    return message
   }
 }
 
@@ -50,21 +110,30 @@ export async function requestApi<T>(
   init?: RequestInit,
   options?: RequestApiOptions,
 ): Promise<T> {
-  // Mock mode for local UI-only testing.
-  if (process.env.NEXT_PUBLIC_USE_MOCK === "true") {
+  if (isMockEnabled()) {
     const { getMockResponse } = await import("./mocks")
-    return getMockResponse<T>(path)
+    try {
+      return await getMockResponse<T>(path)
+    } catch {
+      throw new Error("Mode mock actif, mais ce flux n'a pas de fixture. Desactivez NEXT_PUBLIC_USE_MOCK ou ajoutez des donnees mock.")
+    }
   }
 
   const normalizedPath = path.startsWith("/") ? path : `/${path}`
   const url = path.startsWith("http") ? path : `${getApiBaseUrl()}${normalizedPath}`
   const headers = new Headers(init?.headers || undefined)
-  const response = await fetch(url, {
-    ...init,
-    headers,
-    cache: "no-store",
-    credentials: "same-origin",
-  })
+
+  let response: Response
+  try {
+    response = await fetch(url, {
+      ...init,
+      headers,
+      cache: "no-store",
+      credentials: "same-origin",
+    })
+  } catch {
+    throw new Error(`Connexion API impossible (${normalizedPath}). ${friendlyProxyHint()}`)
+  }
 
   const isAuthEndpoint = normalizedPath.startsWith("/api/v1/admin/auth/")
   if (response.status === 401 && !isAuthEndpoint && !options?.skipAuthRetry) {
@@ -82,9 +151,11 @@ export async function requestApi<T>(
     }
     throw new Error(message)
   }
+
   if (response.status === 204) {
     return undefined as T
   }
+
   return (await response.json()) as T
 }
 

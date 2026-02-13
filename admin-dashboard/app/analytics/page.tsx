@@ -16,6 +16,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { EmptyState } from "@/components/ui/empty-state"
 import { ErrorState } from "@/components/ui/error-state"
 import { Skeleton } from "@/components/ui/skeleton"
+import { useLoadingTimeout } from "@/hooks/use-loading-timeout"
 import { fetchApi } from "@/lib/api"
 import { formatCurrencyFr, formatNumberFr } from "@/lib/format"
 
@@ -40,6 +41,7 @@ export default function AnalyticsPage() {
     isLoading: analyticsLoading,
     mutate: mutateAnalytics,
   } = useSWR<AnalyticsData>("/api/v1/admin/analytics", fetcher)
+  const loadingTimedOut = useLoadingTimeout(analyticsLoading, 12_000)
   const { data: stats } = useSWR<DashboardStats>("/api/v1/admin/stats", fetcher)
   const [updatedAt, setUpdatedAt] = React.useState<Date | null>(null)
 
@@ -75,10 +77,10 @@ export default function AnalyticsPage() {
         <div className="flex flex-1 flex-col gap-4 p-4 pt-0 md:p-8">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="text-3xl font-bold tracking-tight">Analytique</h2>
-            <SyncStatus updatedAt={updatedAt} />
+            <SyncStatus updatedAt={updatedAt} onRefresh={() => void mutateAnalytics()} />
           </div>
 
-          {analyticsLoading ? (
+          {analyticsLoading && !loadingTimedOut ? (
             <div className="space-y-4">
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                 <Skeleton className="h-28 w-full" />
@@ -89,19 +91,28 @@ export default function AnalyticsPage() {
               <Skeleton className="h-80 w-full" />
             </div>
           ) : null}
-          {!analyticsLoading && analyticsError ? (
+          {!analyticsLoading && (analyticsError || loadingTimedOut) ? (
             <ErrorState
               title="Impossible de charger les donnees analytiques."
+              description={
+                loadingTimedOut
+                  ? "Le chargement depasse le delai attendu. Verifiez la connectivite API puis relancez."
+                  : analyticsError instanceof Error
+                    ? analyticsError.message
+                    : "Les donnees analytiques sont indisponibles."
+              }
+              secondaryLabel="Ouvrir Parametres"
+              secondaryHref="/settings"
               onRetry={() => void mutateAnalytics()}
             />
           ) : null}
-          {!analyticsLoading && !analyticsError && analytics && analytics.total_leads === 0 ? (
+          {!analyticsLoading && !analyticsError && !loadingTimedOut && analytics && analytics.total_leads === 0 ? (
             <EmptyState
               title="Aucune donnee disponible"
               description="Les graphiques et KPI apparaitront apres creation de vos premiers leads."
             />
           ) : null}
-          {!analyticsLoading && !analyticsError && analytics && analytics.total_leads > 0 ? (
+          {!analyticsLoading && !analyticsError && !loadingTimedOut && analytics && analytics.total_leads > 0 ? (
             <>
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                 <Card className="rounded-xl border shadow-sm">

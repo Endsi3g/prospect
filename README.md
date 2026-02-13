@@ -59,6 +59,20 @@ npm run dev
 - Dashboard: `http://localhost:3000`
 - API: `http://localhost:8000`
 
+## Deploiement Vercel (frontend)
+
+Le frontend deployable est `admin-dashboard`, avec backend FastAPI externe.
+
+```powershell
+npx vercel --cwd admin-dashboard
+npx vercel --prod --cwd admin-dashboard
+```
+
+Variables Vercel minimales:
+- `API_BASE_URL=https://<backend-render>`
+- `NEXT_PUBLIC_USE_MOCK=false`
+- `PROXY_UPSTREAM_TIMEOUT_MS=20000`
+
 ## Demarrage Docker
 
 ```powershell

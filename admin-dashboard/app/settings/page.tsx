@@ -438,6 +438,8 @@ export default function SettingsPage() {
                 <Input
                   placeholder="Slack webhook URL"
                   value={integrationForm.slackWebhook}
+                  disabled={!integrationForm.slackEnabled}
+                  className={!integrationForm.slackEnabled ? "opacity-60" : ""}
                   onChange={(event) =>
                     setIntegrationForm((current) => ({
                       ...current,
@@ -445,6 +447,9 @@ export default function SettingsPage() {
                     }))
                   }
                 />
+                {!integrationForm.slackEnabled ? (
+                  <p className="text-xs text-muted-foreground">Activez Slack pour editer ce champ.</p>
+                ) : null}
               </div>
               <div className="space-y-3 rounded-lg border p-3">
                 <div className="flex items-center gap-2">
@@ -463,6 +468,8 @@ export default function SettingsPage() {
                 <Input
                   placeholder="Zap ID"
                   value={integrationForm.zapierZapId}
+                  disabled={!integrationForm.zapierEnabled}
+                  className={!integrationForm.zapierEnabled ? "opacity-60" : ""}
                   onChange={(event) =>
                     setIntegrationForm((current) => ({
                       ...current,
@@ -470,6 +477,9 @@ export default function SettingsPage() {
                     }))
                   }
                 />
+                {!integrationForm.zapierEnabled ? (
+                  <p className="text-xs text-muted-foreground">Activez Zapier pour editer ce champ.</p>
+                ) : null}
               </div>
               <div className="space-y-3 rounded-lg border p-3">
                 <div className="flex items-center gap-2">
@@ -506,6 +516,8 @@ export default function SettingsPage() {
                 <Input
                   placeholder="Perplexity API key (optionnel)"
                   value={integrationForm.perplexityApiKey}
+                  disabled={!integrationForm.perplexityEnabled}
+                  className={!integrationForm.perplexityEnabled ? "opacity-60" : ""}
                   onChange={(event) =>
                     setIntegrationForm((current) => ({
                       ...current,
@@ -516,6 +528,8 @@ export default function SettingsPage() {
                 <Input
                   placeholder="Modele (ex: sonar)"
                   value={integrationForm.perplexityModel}
+                  disabled={!integrationForm.perplexityEnabled}
+                  className={!integrationForm.perplexityEnabled ? "opacity-60" : ""}
                   onChange={(event) =>
                     setIntegrationForm((current) => ({
                       ...current,
@@ -523,6 +537,9 @@ export default function SettingsPage() {
                     }))
                   }
                 />
+                {!integrationForm.perplexityEnabled ? (
+                  <p className="text-xs text-muted-foreground">Activez Perplexity pour editer ces champs.</p>
+                ) : null}
               </div>
               <div className="space-y-3 rounded-lg border p-3">
                 <div className="flex items-center gap-2">
@@ -541,6 +558,8 @@ export default function SettingsPage() {
                 <Input
                   placeholder="Firecrawl API key (optionnel)"
                   value={integrationForm.firecrawlApiKey}
+                  disabled={!integrationForm.firecrawlEnabled}
+                  className={!integrationForm.firecrawlEnabled ? "opacity-60" : ""}
                   onChange={(event) =>
                     setIntegrationForm((current) => ({
                       ...current,
@@ -552,6 +571,8 @@ export default function SettingsPage() {
                   <Input
                     placeholder="Country (us)"
                     value={integrationForm.firecrawlCountry}
+                    disabled={!integrationForm.firecrawlEnabled}
+                    className={!integrationForm.firecrawlEnabled ? "opacity-60" : ""}
                     onChange={(event) =>
                       setIntegrationForm((current) => ({
                         ...current,
@@ -562,6 +583,8 @@ export default function SettingsPage() {
                   <Input
                     placeholder="Lang (en)"
                     value={integrationForm.firecrawlLang}
+                    disabled={!integrationForm.firecrawlEnabled}
+                    className={!integrationForm.firecrawlEnabled ? "opacity-60" : ""}
                     onChange={(event) =>
                       setIntegrationForm((current) => ({
                         ...current,
@@ -570,6 +593,9 @@ export default function SettingsPage() {
                     }
                   />
                 </div>
+                {!integrationForm.firecrawlEnabled ? (
+                  <p className="text-xs text-muted-foreground">Activez Firecrawl pour editer ces champs.</p>
+                ) : null}
               </div>
             </div>
             <Button variant="outline" onClick={saveIntegrations} disabled={savingIntegrations}>

@@ -6,10 +6,12 @@ import useSWR from "swr"
 import { AppSidebar } from "@/components/app-sidebar"
 import { SiteHeader } from "@/components/site-header"
 import { EmptyState } from "@/components/ui/empty-state"
+import { ErrorState } from "@/components/ui/error-state"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
+import { useLoadingTimeout } from "@/hooks/use-loading-timeout"
 import { fetchApi } from "@/lib/api"
 
 type SearchResult = {
@@ -53,16 +55,23 @@ export default function ResearchPage() {
   const [webProvider, setWebProvider] = React.useState("auto")
   const [webLimit, setWebLimit] = React.useState("8")
 
-  const { data: search, error: searchError, isLoading: searchLoading } = useSWR<SearchResponse>(
+  const { data: search, error: searchError, isLoading: searchLoading, mutate: mutateSearch } = useSWR<SearchResponse>(
     query.trim() ? `/api/v1/admin/search?q=${encodeURIComponent(query.trim())}&limit=10` : null,
     fetcher,
   )
-  const { data: webResearch, error: webError, isLoading: webLoading } = useSWR<WebResearchResponse>(
+  const {
+    data: webResearch,
+    error: webError,
+    isLoading: webLoading,
+    mutate: mutateWebResearch,
+  } = useSWR<WebResearchResponse>(
     webQuery.trim()
       ? `/api/v1/admin/research/web?q=${encodeURIComponent(webQuery.trim())}&provider=${encodeURIComponent(webProvider)}&limit=${encodeURIComponent(webLimit)}`
       : null,
     fetcher,
   )
+  const searchTimedOut = useLoadingTimeout(searchLoading, 10_000)
+  const webTimedOut = useLoadingTimeout(webLoading, 12_000)
 
   return (
     <SidebarProvider
@@ -89,9 +98,22 @@ export default function ResearchPage() {
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
               />
-              {searchLoading ? <p className="text-sm text-muted-foreground">Recherche en cours...</p> : null}
-              {searchError ? (
-                <p className="text-sm text-red-600">Impossible de lancer la recherche.</p>
+              {searchLoading && !searchTimedOut ? <p className="text-sm text-muted-foreground">Recherche en cours...</p> : null}
+              {searchError || searchTimedOut ? (
+                <ErrorState
+                  title="Impossible de lancer la recherche guidee."
+                  description={
+                    searchTimedOut
+                      ? "La recherche prend trop de temps. Essayez un terme plus precis ou relancez."
+                      : searchError instanceof Error
+                        ? searchError.message
+                        : "La recherche guidee est indisponible."
+                  }
+                  retryLabel="Relancer"
+                  secondaryLabel="Ouvrir Parametres"
+                  secondaryHref="/settings"
+                  onRetry={() => void mutateSearch()}
+                />
               ) : null}
               {!searchLoading && query.trim() && search && search.items.length === 0 ? (
                 <EmptyState
@@ -156,8 +178,23 @@ export default function ResearchPage() {
                   </Select>
                 </div>
               </div>
-              {webLoading ? <p className="text-sm text-muted-foreground">Recherche web en cours...</p> : null}
-              {webError ? <p className="text-sm text-red-600">Recherche web indisponible.</p> : null}
+              {webLoading && !webTimedOut ? <p className="text-sm text-muted-foreground">Recherche web en cours...</p> : null}
+              {webError || webTimedOut ? (
+                <ErrorState
+                  title="Recherche web indisponible."
+                  description={
+                    webTimedOut
+                      ? "La recherche web depasse le delai attendu. Verifiez vos integrations et relancez."
+                      : webError instanceof Error
+                        ? webError.message
+                        : "Impossible de contacter les providers web."
+                  }
+                  retryLabel="Relancer"
+                  secondaryLabel="Configurer Integrations"
+                  secondaryHref="/settings"
+                  onRetry={() => void mutateWebResearch()}
+                />
+              ) : null}
               {!webLoading && webResearch && webResearch.items.length === 0 && webQuery.trim() ? (
                 <EmptyState
                   title="Aucun resultat web"

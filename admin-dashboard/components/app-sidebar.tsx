@@ -38,41 +38,51 @@ const data = {
     email: "m@example.com",
     avatar: "/avatars/shadcn.jpg",
   },
-  navMain: [
+  navMainSections: [
     {
-      title: messages.sidebar.dashboard,
-      url: "/dashboard",
-      icon: IconDashboard,
+      label: "Pilotage",
+      items: [
+        {
+          title: messages.sidebar.dashboard,
+          url: "/dashboard",
+          icon: IconDashboard,
+        },
+        {
+          title: messages.sidebar.leads,
+          url: "/leads",
+          icon: IconUsers,
+        },
+        {
+          title: messages.sidebar.tasks,
+          url: "/tasks",
+          icon: IconListDetails,
+        },
+        {
+          title: messages.sidebar.projects,
+          url: "/projects",
+          icon: IconFolder,
+        },
+      ],
     },
     {
-      title: messages.sidebar.tasks,
-      url: "/tasks",
-      icon: IconListDetails,
-    },
-    {
-      title: messages.sidebar.leads,
-      url: "/leads",
-      icon: IconUsers,
-    },
-    {
-      title: messages.sidebar.analytics,
-      url: "/analytics",
-      icon: IconChartBar,
-    },
-    {
-      title: messages.sidebar.research,
-      url: "/research",
-      icon: IconSearch,
-    },
-    {
-      title: messages.sidebar.assistantAi,
-      url: "/assistant",
-      icon: IconSparkles,
-    },
-    {
-      title: messages.sidebar.projects,
-      url: "/projects",
-      icon: IconFolder,
+      label: "Analyse",
+      items: [
+        {
+          title: messages.sidebar.analytics,
+          url: "/analytics",
+          icon: IconChartBar,
+        },
+        {
+          title: messages.sidebar.research,
+          url: "/research",
+          icon: IconSearch,
+        },
+        {
+          title: messages.sidebar.assistantAi,
+          url: "/assistant",
+          icon: IconSparkles,
+        },
+      ],
     },
   ],
   documents: [
@@ -138,7 +148,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         </SidebarMenu>
       </SidebarHeader>
       <SidebarContent>
-        <NavMain items={data.navMain} />
+        <NavMain sections={data.navMainSections} />
         <NavDocuments items={data.documents} />
         <NavSecondary items={navSecondary} className="mt-auto" />
       </SidebarContent>
