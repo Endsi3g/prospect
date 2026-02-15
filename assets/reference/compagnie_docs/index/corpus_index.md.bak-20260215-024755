@@ -1,0 +1,31 @@
+# CompagnieDocs Corpus Index
+
+- `generated_at`: `2026-02-15T02:39:44.052196+00:00`
+- `source_dir`: `C:\prospect\prospect\CompagnieDocs`
+- `target_dir`: `C:\prospect\prospect\assets\reference\compagnie_docs`
+
+## Stats
+- `total_files`: `11`
+- `processed_pdf`: `0`
+- `processed_fig`: `3`
+- `pending_fig_conversion`: `3`
+- `fig_converted`: `0`
+- `duplicates`: `0`
+- `failed`: `8`
+- `unsupported`: `0`
+
+## Documents
+
+| doc_id | ext | status | original_name | raw_path |
+| --- | --- | --- | --- | --- |
+| document-2-8952f800b654 | .pdf | failed | Document 2.pdf | C:\prospect\prospect\assets\reference\compagnie_docs\raw\document-2-8952f800b654.pdf |
+| forme-juridique-et-secteur-d-activite-7abd595ffa87 | .pdf | failed | Forme juridique et secteur d_activité –...pdf | C:\prospect\prospect\assets\reference\compagnie_docs\raw\forme-juridique-et-secteur-d-activite-7abd595ffa87.pdf |
+| invoice-easy-5c7e5c239682 | .fig | pending_conversion | Invoice,+Easy!.fig | C:\prospect\prospect\assets\reference\compagnie_docs\raw\invoice-easy-5c7e5c239682.fig |
+| manuel-operationelle-de-guerre-aa366af97155 | .pdf | failed | Manuel Opérationelle de Guerre.pdf | C:\prospect\prospect\assets\reference\compagnie_docs\raw\manuel-operationelle-de-guerre-aa366af97155.pdf |
+| pitch-easy-6ad370f3cad7 | .fig | pending_conversion | Pitch,+Easy!.fig | C:\prospect\prospect\assets\reference\compagnie_docs\raw\pitch-easy-6ad370f3cad7.fig |
+| playbook-strategique-uprising-studio-7f2faa3d0ae2 | .pdf | failed | PLAYBOOK STRATÉGIQUE _ UPRISING STUDIO.pdf | C:\prospect\prospect\assets\reference\compagnie_docs\raw\playbook-strategique-uprising-studio-7f2faa3d0ae2.pdf |
+| professional-brand-guidelines-template-figma-b51d0a1359d3 | .fig | pending_conversion | Professional Brand Guidelines Template (Figma).fig | C:\prospect\prospect\assets\reference\compagnie_docs\raw\professional-brand-guidelines-template-figma-b51d0a1359d3.fig |
+| uprising-studio-manifeste-5126b4bc7fec | .pdf | failed | UPRISING STUDIO  MANIFESTE.pdf | C:\prospect\prospect\assets\reference\compagnie_docs\raw\uprising-studio-manifeste-5126b4bc7fec.pdf |
+| uprising-studio-guide-legalisation-quebec-outils-gratuits-4d66888f3e43 | .pdf | failed | UPRISING STUDIO - Guide Légalisation Québec + Outils Gratuits.pdf | C:\prospect\prospect\assets\reference\compagnie_docs\raw\uprising-studio-guide-legalisation-quebec-outils-gratuits-4d66888f3e43.pdf |
+| uprising-studio-prompt-complet-branding-style-apple-x-novara-fc7dc0398fd5 | .pdf | failed | UPRISING STUDIO - Prompt Complet Branding Style Apple x Novara.pdf | C:\prospect\prospect\assets\reference\compagnie_docs\raw\uprising-studio-prompt-complet-branding-style-apple-x-novara-fc7dc0398fd5.pdf |
+| uprising-studio-4199d9effe80 | .pdf | failed | UPRISING STUDIO.pdf | C:\prospect\prospect\assets\reference\compagnie_docs\raw\uprising-studio-4199d9effe80.pdf |

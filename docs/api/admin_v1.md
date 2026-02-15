@@ -8,6 +8,23 @@ Authentication:
 - For `jwt` and `hybrid`, session auth is available via `/api/v1/admin/auth/*` (HTTP-only cookies and Bearer token support).
 - Production recommendation: set `ADMIN_AUTH_MODE=jwt` and provide a strong `JWT_SECRET`.
 
+Error envelope (all admin/API v1 errors):
+
+```json
+{
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "Request validation failed.",
+    "details": {"issues": []},
+    "retryable": false,
+    "request_id": "uuid-or-client-id"
+  },
+  "detail": "Request validation failed."
+}
+```
+
+`x-request-id` is echoed in response headers and payload.
+
 ## Auth
 - `POST /api/v1/admin/auth/login`
 - `POST /api/v1/admin/auth/refresh`
@@ -31,6 +48,30 @@ Authentication:
 - `POST /api/v1/admin/tasks`
 - `PATCH /api/v1/admin/tasks/{task_id}`
 - `DELETE /api/v1/admin/tasks/{task_id}`
+
+## Sequences
+- `POST /api/v1/admin/sequences`
+- `GET /api/v1/admin/sequences`
+- `GET /api/v1/admin/sequences/{sequence_id}`
+- `PATCH /api/v1/admin/sequences/{sequence_id}`
+- `POST /api/v1/admin/sequences/{sequence_id}/simulate`
+
+## Campaigns
+- `POST /api/v1/admin/campaigns`
+- `GET /api/v1/admin/campaigns`
+- `GET /api/v1/admin/campaigns/{campaign_id}`
+- `PATCH /api/v1/admin/campaigns/{campaign_id}`
+- `POST /api/v1/admin/campaigns/{campaign_id}/activate`
+- `POST /api/v1/admin/campaigns/{campaign_id}/pause`
+- `POST /api/v1/admin/campaigns/{campaign_id}/enroll`
+- `GET /api/v1/admin/campaigns/{campaign_id}/runs`
+
+## Content generation
+- `POST /api/v1/admin/content/generate`
+
+## Enrichment
+- `POST /api/v1/admin/enrichment/run`
+- `GET /api/v1/admin/enrichment/{job_id}`
 
 ## Projects
 - `GET /api/v1/admin/projects`

@@ -18,9 +18,10 @@ from sqlalchemy.orm import Session
 from ..core.db_models import DBLead, DBNotification, DBTask
 from ..core.logging import get_logger
 from ..scoring.engine import ScoringEngine
-from ..core.models import Lead, LeadStatus
+from ..core.models import Company, Lead, LeadStatus
 
 from . import assistant_store as store
+from . import campaign_service
 from .assistant_types import AssistantActionSpec, AssistantPlan
 
 logger = get_logger(__name__)
@@ -298,51 +299,54 @@ def _handle_rescore(db: Session, payload: dict[str, Any]) -> dict[str, Any]:
 
     leads = query.limit(200).all()
     engine = ScoringEngine()
-    scored = 0
+    rescored_count = 0
     for db_lead in leads:
         try:
+            details = db_lead.details if isinstance(db_lead.details, dict) else {}
             lead_obj = Lead(
+                id=db_lead.id or db_lead.email or str(uuid.uuid4()),
                 email=db_lead.email or "",
                 first_name=db_lead.first_name or "",
                 last_name=db_lead.last_name or "",
                 title=db_lead.title or "",
-                details=db_lead.details or {},
+                company=Company(
+                    name=str(details.get("company_name") or "Unknown"),
+                    industry=details.get("industry"),
+                    location=details.get("location"),
+                    description=details.get("company_description"),
+                ),
+                details=details,
             )
-            result = engine.score_lead(lead_obj)
-            db_lead.icp_score = result.icp_score
-            db_lead.heat_score = result.heat_score
-            db_lead.total_score = result.total_score
-            db_lead.tier = result.tier
-            db_lead.heat_status = result.heat_status
-            db_lead.next_best_action = result.next_best_action
-            db_lead.icp_breakdown = result.icp_breakdown
-            db_lead.heat_breakdown = result.heat_breakdown
-            db_lead.last_scored_at = datetime.now()
-            scored += 1
+            scored_lead = engine.score_lead(lead_obj)
+            db_lead.icp_score = scored_lead.score.icp_score
+            db_lead.heat_score = scored_lead.score.heat_score
+            db_lead.total_score = scored_lead.score.total_score
+            db_lead.tier = scored_lead.score.tier
+            db_lead.heat_status = scored_lead.score.heat_status
+            db_lead.next_best_action = scored_lead.score.next_best_action
+            db_lead.icp_breakdown = scored_lead.score.icp_breakdown
+            db_lead.heat_breakdown = scored_lead.score.heat_breakdown
+            db_lead.last_scored_at = scored_lead.score.last_scored_at or datetime.now()
+            rescored_count += 1
         except Exception as exc:
             logger.warning("Score error for %s: %s", db_lead.id, exc)
     db.commit()
-    return {"rescored": scored}
+    return {"rescored": rescored_count}
 
 
 def _handle_nurture(db: Session, payload: dict[str, Any]) -> dict[str, Any]:
-    """Create follow-up tasks for un-nurtured leads."""
+    """Run nurture flow using campaign orchestration."""
     template = payload.get("template", "follow_up")
-    leads = db.query(DBLead).filter(DBLead.status.in_(["NEW", "new"])).limit(50).all()
-    created = 0
-    for lead in leads:
-        task_id = str(uuid.uuid4())
-        db_task = DBTask(
-            id=task_id,
-            title=f"[{template}] Relance {lead.first_name} {lead.last_name}",
-            status="To Do",
-            priority="Medium",
-            lead_id=lead.id,
-        )
-        db.add(db_task)
-        created += 1
-    db.commit()
-    return {"tasks_created": created}
+    try:
+        limit = max(1, min(int(payload.get("max_leads", 50)), 200))
+    except (TypeError, ValueError):
+        limit = 50
+    return campaign_service.run_default_nurture(
+        db,
+        template=str(template),
+        limit=limit,
+        actor="assistant",
+    )
 
 
 def _handle_delete_lead(db: Session, payload: dict[str, Any]) -> dict[str, Any]:

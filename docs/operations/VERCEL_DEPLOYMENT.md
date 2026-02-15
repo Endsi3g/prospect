@@ -1,33 +1,33 @@
 # Vercel Deployment Runbook (admin-dashboard)
 
-This project deploys as split architecture:
+This project uses split architecture:
 - Frontend: `admin-dashboard` on Vercel
-- Backend API: external FastAPI service (Render)
+- Backend API: external FastAPI service (recommended: Koyeb)
 
-## 1) Required backend settings (Render)
+## 1) Required backend settings
 
 Set these environment variables on backend first:
 - `APP_ENV=production`
-- `ADMIN_AUTH_MODE=hybrid` (current project choice)
+- `ADMIN_AUTH_MODE=hybrid`
 - `ADMIN_USERNAME=<secure-user>`
 - `ADMIN_PASSWORD=<secure-password>`
 - `JWT_SECRET=<long-random-secret>`
 - `ADMIN_CORS_ALLOW_ORIGINS=https://<your-vercel-domain>.vercel.app`
 
 Backend health must pass:
-- `GET https://<render-backend>/healthz` returns `{"ok": true, ...}`
+- `GET https://<backend-domain>/healthz` returns `{"ok": true, ...}`
 
 ## 2) Required Vercel settings
 
 Set on Vercel project (Preview + Production):
-- `API_BASE_URL=https://<render-backend-domain>`
+- `API_BASE_URL=https://<backend-domain>`
 - `ADMIN_AUTH=<admin-user>:<admin-password>` (optional fallback for proxy)
 - `PROXY_UPSTREAM_TIMEOUT_MS=20000`
 - `NEXT_PUBLIC_USE_MOCK=false`
 
 Important:
-- In production, proxy route now requires `API_BASE_URL`.
-- If missing, frontend proxy returns clear config error.
+- In production, proxy route requires `API_BASE_URL`.
+- If missing, frontend proxy returns a clear config error.
 
 ## 3) Deploy commands
 

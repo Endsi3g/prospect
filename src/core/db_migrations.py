@@ -34,8 +34,43 @@ def ensure_sqlite_schema_compatibility(engine) -> None:
         "description": "TEXT",
         "status": "TEXT DEFAULT 'Planning'",
         "lead_id": "TEXT",
+        "progress_percent": "INTEGER DEFAULT 0",
+        "budget_total": "REAL",
+        "budget_spent": "REAL DEFAULT 0.0",
+        "team_json": "TEXT NOT NULL DEFAULT '[]'",
+        "timeline_json": "TEXT NOT NULL DEFAULT '[]'",
+        "deliverables_json": "TEXT NOT NULL DEFAULT '[]'",
         "due_date": "TIMESTAMP",
         "created_at": "TIMESTAMP",
+        "updated_at": "TIMESTAMP",
+    }
+    required_task_columns = {
+        "description": "TEXT",
+        "project_id": "TEXT",
+        "project_name": "TEXT",
+        "channel": "TEXT NOT NULL DEFAULT 'email'",
+        "sequence_step": "INTEGER NOT NULL DEFAULT 1",
+        "source": "TEXT NOT NULL DEFAULT 'manual'",
+        "rule_id": "TEXT",
+        "score_snapshot_json": "TEXT NOT NULL DEFAULT '{}'",
+        "subtasks_json": "TEXT NOT NULL DEFAULT '[]'",
+        "comments_json": "TEXT NOT NULL DEFAULT '[]'",
+        "attachments_json": "TEXT NOT NULL DEFAULT '[]'",
+        "timeline_json": "TEXT NOT NULL DEFAULT '[]'",
+        "updated_at": "TIMESTAMP",
+        "closed_at": "TIMESTAMP",
+    }
+    required_opportunity_columns = {
+        "lead_id": "TEXT NOT NULL",
+        "name": "TEXT NOT NULL DEFAULT 'Opportunity'",
+        "stage": "TEXT NOT NULL DEFAULT 'qualification'",
+        "status": "TEXT NOT NULL DEFAULT 'open'",
+        "amount": "REAL",
+        "probability": "INTEGER NOT NULL DEFAULT 10",
+        "assigned_to": "TEXT NOT NULL DEFAULT 'Vous'",
+        "expected_close_date": "TIMESTAMP",
+        "details_json": "TEXT NOT NULL DEFAULT '{}'",
+        "created_at": "TIMESTAMP NOT NULL",
         "updated_at": "TIMESTAMP",
     }
     required_admin_settings_columns = {
@@ -83,6 +118,73 @@ def ensure_sqlite_schema_compatibility(engine) -> None:
             connection.execute(
                 text("CREATE INDEX IF NOT EXISTS ix_projects_due_date ON projects (due_date)")
             )
+
+        task_columns = _get_table_columns(connection, "tasks")
+        if task_columns:
+            for column_name, column_type in required_task_columns.items():
+                if column_name not in task_columns:
+                    connection.execute(
+                        text(f"ALTER TABLE tasks ADD COLUMN {column_name} {column_type}")
+                    )
+            connection.execute(
+                text("CREATE INDEX IF NOT EXISTS ix_tasks_channel ON tasks (channel)")
+            )
+            connection.execute(
+                text("CREATE INDEX IF NOT EXISTS ix_tasks_source ON tasks (source)")
+            )
+            connection.execute(
+                text("CREATE INDEX IF NOT EXISTS ix_tasks_rule_id ON tasks (rule_id)")
+            )
+            connection.execute(
+                text("CREATE INDEX IF NOT EXISTS ix_tasks_project_id ON tasks (project_id)")
+            )
+
+        opportunity_columns = _get_table_columns(connection, "opportunities")
+        if opportunity_columns:
+            for column_name, column_type in required_opportunity_columns.items():
+                if column_name not in opportunity_columns:
+                    connection.execute(
+                        text(f"ALTER TABLE opportunities ADD COLUMN {column_name} {column_type}")
+                    )
+        else:
+            connection.execute(
+                text(
+                    """
+                    CREATE TABLE IF NOT EXISTS opportunities (
+                        id TEXT PRIMARY KEY,
+                        lead_id TEXT NOT NULL,
+                        name TEXT NOT NULL,
+                        stage TEXT NOT NULL DEFAULT 'qualification',
+                        status TEXT NOT NULL DEFAULT 'open',
+                        amount REAL,
+                        probability INTEGER NOT NULL DEFAULT 10,
+                        assigned_to TEXT NOT NULL DEFAULT 'Vous',
+                        expected_close_date TIMESTAMP,
+                        details_json TEXT NOT NULL DEFAULT '{}',
+                        created_at TIMESTAMP NOT NULL,
+                        updated_at TIMESTAMP
+                    )
+                    """
+                )
+            )
+        connection.execute(
+            text("CREATE INDEX IF NOT EXISTS ix_opportunities_lead_id ON opportunities (lead_id)")
+        )
+        connection.execute(
+            text("CREATE INDEX IF NOT EXISTS ix_opportunities_status ON opportunities (status)")
+        )
+        connection.execute(
+            text("CREATE INDEX IF NOT EXISTS ix_opportunities_stage ON opportunities (stage)")
+        )
+        connection.execute(
+            text("CREATE INDEX IF NOT EXISTS ix_opportunities_expected_close_date ON opportunities (expected_close_date)")
+        )
+        connection.execute(
+            text("CREATE INDEX IF NOT EXISTS ix_opportunities_created_at ON opportunities (created_at)")
+        )
+        connection.execute(
+            text("CREATE INDEX IF NOT EXISTS ix_opportunities_assigned_to ON opportunities (assigned_to)")
+        )
 
         settings_columns = _get_table_columns(connection, "admin_settings")
         if not settings_columns:
@@ -471,4 +573,175 @@ def ensure_sqlite_schema_compatibility(engine) -> None:
         )
         connection.execute(
             text("CREATE INDEX IF NOT EXISTS ix_assistant_actions_status ON assistant_actions (status)")
+        )
+
+        # ── Campaigns / Sequences / Content / Enrichment ────────
+        connection.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS campaign_sequences (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    description TEXT,
+                    status TEXT NOT NULL DEFAULT 'draft',
+                    channels_json TEXT NOT NULL DEFAULT '[]',
+                    steps_json TEXT NOT NULL DEFAULT '[]',
+                    created_at TIMESTAMP,
+                    updated_at TIMESTAMP
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS campaigns (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    description TEXT,
+                    status TEXT NOT NULL DEFAULT 'draft',
+                    sequence_id TEXT,
+                    channel_strategy_json TEXT NOT NULL DEFAULT '{}',
+                    enrollment_filter_json TEXT NOT NULL DEFAULT '{}',
+                    created_at TIMESTAMP,
+                    updated_at TIMESTAMP
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS campaign_enrollments (
+                    id TEXT PRIMARY KEY,
+                    campaign_id TEXT NOT NULL,
+                    lead_id TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'active',
+                    current_step_index INTEGER NOT NULL DEFAULT 0,
+                    next_run_at TIMESTAMP,
+                    last_action_at TIMESTAMP,
+                    created_at TIMESTAMP,
+                    updated_at TIMESTAMP
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS campaign_runs (
+                    id TEXT PRIMARY KEY,
+                    campaign_id TEXT NOT NULL,
+                    enrollment_id TEXT,
+                    lead_id TEXT,
+                    trigger_source TEXT NOT NULL DEFAULT 'manual',
+                    action_type TEXT NOT NULL DEFAULT 'nurture_step',
+                    status TEXT NOT NULL DEFAULT 'pending',
+                    step_index INTEGER NOT NULL DEFAULT 0,
+                    payload_json TEXT NOT NULL DEFAULT '{}',
+                    result_json TEXT NOT NULL DEFAULT '{}',
+                    error_message TEXT,
+                    created_at TIMESTAMP,
+                    executed_at TIMESTAMP
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS content_generations (
+                    id TEXT PRIMARY KEY,
+                    lead_id TEXT,
+                    channel TEXT NOT NULL,
+                    step INTEGER NOT NULL DEFAULT 1,
+                    template_key TEXT,
+                    provider TEXT NOT NULL DEFAULT 'deterministic',
+                    prompt_context_json TEXT NOT NULL DEFAULT '{}',
+                    output_json TEXT NOT NULL DEFAULT '{}',
+                    variables_used_json TEXT NOT NULL DEFAULT '[]',
+                    confidence REAL NOT NULL DEFAULT 0.5,
+                    created_at TIMESTAMP
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS enrichment_jobs (
+                    id TEXT PRIMARY KEY,
+                    lead_id TEXT,
+                    query TEXT NOT NULL,
+                    provider TEXT NOT NULL DEFAULT 'mock',
+                    status TEXT NOT NULL DEFAULT 'pending',
+                    relevance_score REAL NOT NULL DEFAULT 0.0,
+                    result_json TEXT NOT NULL DEFAULT '{}',
+                    error_message TEXT,
+                    created_at TIMESTAMP,
+                    finished_at TIMESTAMP
+                )
+                """
+            )
+        )
+
+        connection.execute(
+            text("CREATE INDEX IF NOT EXISTS ix_campaign_sequences_status ON campaign_sequences (status)")
+        )
+        connection.execute(
+            text("CREATE INDEX IF NOT EXISTS ix_campaign_sequences_created_at ON campaign_sequences (created_at)")
+        )
+        connection.execute(
+            text("CREATE INDEX IF NOT EXISTS ix_campaigns_status ON campaigns (status)")
+        )
+        connection.execute(
+            text("CREATE INDEX IF NOT EXISTS ix_campaigns_sequence_id ON campaigns (sequence_id)")
+        )
+        connection.execute(
+            text("CREATE INDEX IF NOT EXISTS ix_campaigns_created_at ON campaigns (created_at)")
+        )
+        connection.execute(
+            text("CREATE INDEX IF NOT EXISTS ix_campaign_enrollments_campaign_id ON campaign_enrollments (campaign_id)")
+        )
+        connection.execute(
+            text("CREATE INDEX IF NOT EXISTS ix_campaign_enrollments_lead_id ON campaign_enrollments (lead_id)")
+        )
+        connection.execute(
+            text("CREATE INDEX IF NOT EXISTS ix_campaign_enrollments_status ON campaign_enrollments (status)")
+        )
+        connection.execute(
+            text("CREATE INDEX IF NOT EXISTS ix_campaign_enrollments_next_run_at ON campaign_enrollments (next_run_at)")
+        )
+        connection.execute(
+            text("CREATE INDEX IF NOT EXISTS ix_campaign_runs_campaign_id ON campaign_runs (campaign_id)")
+        )
+        connection.execute(
+            text("CREATE INDEX IF NOT EXISTS ix_campaign_runs_enrollment_id ON campaign_runs (enrollment_id)")
+        )
+        connection.execute(
+            text("CREATE INDEX IF NOT EXISTS ix_campaign_runs_lead_id ON campaign_runs (lead_id)")
+        )
+        connection.execute(
+            text("CREATE INDEX IF NOT EXISTS ix_campaign_runs_status ON campaign_runs (status)")
+        )
+        connection.execute(
+            text("CREATE INDEX IF NOT EXISTS ix_campaign_runs_created_at ON campaign_runs (created_at)")
+        )
+        connection.execute(
+            text("CREATE INDEX IF NOT EXISTS ix_content_generations_channel ON content_generations (channel)")
+        )
+        connection.execute(
+            text("CREATE INDEX IF NOT EXISTS ix_content_generations_lead_id ON content_generations (lead_id)")
+        )
+        connection.execute(
+            text("CREATE INDEX IF NOT EXISTS ix_content_generations_created_at ON content_generations (created_at)")
+        )
+        connection.execute(
+            text("CREATE INDEX IF NOT EXISTS ix_enrichment_jobs_status ON enrichment_jobs (status)")
+        )
+        connection.execute(
+            text("CREATE INDEX IF NOT EXISTS ix_enrichment_jobs_provider ON enrichment_jobs (provider)")
+        )
+        connection.execute(
+            text("CREATE INDEX IF NOT EXISTS ix_enrichment_jobs_created_at ON enrichment_jobs (created_at)")
         )

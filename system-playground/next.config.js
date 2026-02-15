@@ -1,9 +1,16 @@
 /** @type {import('next').NextConfig} */
-const apiBaseUrl =
-    process.env.API_BASE_URL ||
-    (process.env.NODE_ENV === "production"
-        ? "https://prospect-api-iso3.onrender.com"
-        : "http://127.0.0.1:8000");
+const configuredApiBaseUrl = process.env.API_BASE_URL;
+const normalizedConfiguredApiBaseUrl =
+    configuredApiBaseUrl && configuredApiBaseUrl.trim()
+        ? configuredApiBaseUrl.replace(/\/$/, "")
+        : "";
+const apiBaseUrl = normalizedConfiguredApiBaseUrl || "http://127.0.0.1:8000";
+const isHostedProductionBuild =
+    process.env.NODE_ENV === "production" && (process.env.VERCEL === "1" || Boolean(process.env.NETLIFY));
+
+if (isHostedProductionBuild && !normalizedConfiguredApiBaseUrl) {
+    throw new Error("API_BASE_URL is required in production for system-playground.");
+}
 
 const nextConfig = {
     output: "standalone",

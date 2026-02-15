@@ -26,6 +26,11 @@ type ApiTask = {
   due_date?: string | null
   assigned_to?: string | null
   lead_id?: string | null
+  channel?: "email" | "linkedin" | "call" | null
+  sequence_step?: number | null
+  source?: "manual" | "auto-rule" | "assistant" | null
+  rule_id?: string | null
+  related_score_snapshot?: Record<string, unknown>
 }
 
 type TasksResponse = {
@@ -42,6 +47,8 @@ export default function TasksPage() {
   const pageSize = 25
   const [search, setSearch] = React.useState("")
   const [status, setStatus] = React.useState("ALL")
+  const [channel, setChannel] = React.useState("ALL")
+  const [source, setSource] = React.useState("ALL")
   const [sort, setSort] = React.useState("created_at")
   const [order, setOrder] = React.useState("desc")
   const [debouncedSearch, setDebouncedSearch] = React.useState(search)
@@ -52,8 +59,10 @@ export default function TasksPage() {
   }, [search])
 
   const queryStatus = status === "ALL" ? "" : status
+  const queryChannel = channel === "ALL" ? "" : channel
+  const querySource = source === "ALL" ? "" : source
   const { data, error, isLoading, mutate } = useSWR<TasksResponse>(
-    `/api/v1/admin/tasks?page=${page}&page_size=${pageSize}&q=${encodeURIComponent(debouncedSearch)}&status=${encodeURIComponent(queryStatus)}&sort=${sort}&order=${order}`,
+    `/api/v1/admin/tasks?page=${page}&page_size=${pageSize}&q=${encodeURIComponent(debouncedSearch)}&status=${encodeURIComponent(queryStatus)}&channel=${encodeURIComponent(queryChannel)}&source=${encodeURIComponent(querySource)}&sort=${sort}&order=${order}`,
     fetcher,
   )
   const loadingTimedOut = useLoadingTimeout(isLoading, 12_000)
@@ -73,6 +82,11 @@ export default function TasksPage() {
       due_date: task.due_date || "",
       assigned_to: task.assigned_to || "Vous",
       lead_id: task.lead_id || undefined,
+      channel: task.channel || "email",
+      sequence_step: Number(task.sequence_step || 1),
+      source: task.source || "manual",
+      rule_id: task.rule_id || undefined,
+      related_score_snapshot: task.related_score_snapshot || {},
     }))
     : []
 
@@ -127,6 +141,8 @@ export default function TasksPage() {
               pageSize={pageSize}
               search={search}
               status={status}
+              channel={channel}
+              source={source}
               sort={sort}
               order={order}
               onSearchChange={(value) => {
@@ -135,6 +151,14 @@ export default function TasksPage() {
               }}
               onStatusChange={(value) => {
                 setStatus(value)
+                setPage(1)
+              }}
+              onChannelChange={(value) => {
+                setChannel(value)
+                setPage(1)
+              }}
+              onSourceChange={(value) => {
+                setSource(value)
                 setPage(1)
               }}
               onPageChange={setPage}

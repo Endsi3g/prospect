@@ -13,6 +13,7 @@ import {
   IconSearch,
   IconSettings,
   IconSparkles,
+  IconTarget,
   IconUsers,
 } from "@tabler/icons-react"
 
@@ -36,7 +37,7 @@ const data = {
   user: {
     name: "shadcn",
     email: "m@example.com",
-    avatar: "/avatars/shadcn.jpg",
+    avatar: "/globe.svg",
   },
   navMainSections: [
     {
@@ -58,9 +59,19 @@ const data = {
           icon: IconListDetails,
         },
         {
+          title: messages.sidebar.opportunities,
+          url: "/opportunities",
+          icon: IconTarget,
+        },
+        {
           title: messages.sidebar.projects,
           url: "/projects",
           icon: IconFolder,
+        },
+        {
+          title: messages.sidebar.campaigns,
+          url: "/campaigns",
+          icon: IconDatabase,
         },
       ],
     },
@@ -76,6 +87,11 @@ const data = {
           title: messages.sidebar.research,
           url: "/research",
           icon: IconSearch,
+        },
+        {
+          title: messages.sidebar.systems,
+          url: "/systems",
+          icon: IconSettings,
         },
         {
           title: messages.sidebar.assistantAi,
@@ -113,6 +129,11 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       title: "Equipe",
       url: "/settings/team",
       icon: IconUsers,
+    },
+    {
+      title: "Dev",
+      url: "/settings/dev",
+      icon: IconSettings,
     },
     {
       title: messages.sidebar.getHelp,

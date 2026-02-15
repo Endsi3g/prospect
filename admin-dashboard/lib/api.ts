@@ -7,10 +7,27 @@ type RequestApiOptions = {
 type ErrorPayload = {
   detail?: string
   message?: string
+  error?: {
+    message?: string
+    code?: string
+    request_id?: string
+  }
 }
 
 function isMockEnabled(): boolean {
   return process.env.NEXT_PUBLIC_USE_MOCK === "true"
+}
+
+function isLocalhostRuntime(): boolean {
+  if (typeof window === "undefined") return false
+  const host = window.location.hostname
+  return host === "localhost" || host === "127.0.0.1"
+}
+
+function shouldAutoMockFallback(): boolean {
+  if (isMockEnabled()) return true
+  if (process.env.NEXT_PUBLIC_AUTO_MOCK_LOCALHOST === "false") return false
+  return isLocalhostRuntime()
 }
 
 function normalizeBaseUrl(raw: string): string {
@@ -23,7 +40,31 @@ export function getApiBaseUrl(): string {
 }
 
 function friendlyProxyHint(): string {
-  return "Verifiez API_BASE_URL sur Vercel et que le backend FastAPI est en ligne."
+  return "Verifiez API_BASE_URL sur votre hebergement frontend (Vercel/Netlify) et que le backend FastAPI est en ligne."
+}
+
+function isRecoverableProxyStatus(status: number): boolean {
+  return status === 500 || status === 502 || status === 503 || status === 504
+}
+
+async function tryMockJsonFallback<T>(path: string, init?: RequestInit): Promise<T | null> {
+  if (!shouldAutoMockFallback()) return null
+  const { getMockResponse } = await import("./mocks")
+  try {
+    return await getMockResponse<T>(path, init)
+  } catch {
+    return null
+  }
+}
+
+async function tryMockBlobFallback(path: string, init?: RequestInit): Promise<Blob | null> {
+  if (!shouldAutoMockFallback()) return null
+  const { getMockBlobResponse } = await import("./mocks")
+  try {
+    return await getMockBlobResponse(path, init)
+  } catch {
+    return null
+  }
 }
 
 function mapFriendlyError({
@@ -67,7 +108,7 @@ async function parseErrorMessage(
 ): Promise<string> {
   try {
     const payload = (await response.clone().json()) as ErrorPayload
-    const detail = payload.detail || payload.message || ""
+    const detail = payload.error?.message || payload.detail || payload.message || ""
     return mapFriendlyError({
       status: response.status,
       detail,
@@ -113,7 +154,7 @@ export async function requestApi<T>(
   if (isMockEnabled()) {
     const { getMockResponse } = await import("./mocks")
     try {
-      return await getMockResponse<T>(path)
+      return await getMockResponse<T>(path, init)
     } catch {
       throw new Error("Mode mock actif, mais ce flux n'a pas de fixture. Desactivez NEXT_PUBLIC_USE_MOCK ou ajoutez des donnees mock.")
     }
@@ -132,6 +173,8 @@ export async function requestApi<T>(
       credentials: "same-origin",
     })
   } catch {
+    const fallback = await tryMockJsonFallback<T>(path, init)
+    if (fallback !== null) return fallback
     throw new Error(`Connexion API impossible (${normalizedPath}). ${friendlyProxyHint()}`)
   }
 
@@ -144,6 +187,10 @@ export async function requestApi<T>(
   }
 
   if (!response.ok) {
+    if (isRecoverableProxyStatus(response.status)) {
+      const fallback = await tryMockJsonFallback<T>(path, init)
+      if (fallback !== null) return fallback
+    }
     const message = await parseErrorMessage(response, normalizedPath)
     if (response.status === 401 && typeof window !== "undefined" && !isAuthEndpoint) {
       window.location.href = "/login"
@@ -161,4 +208,42 @@ export async function requestApi<T>(
 
 export async function fetchApi<T>(path: string): Promise<T> {
   return requestApi<T>(path)
+}
+
+export async function requestApiBlob(path: string, init?: RequestInit): Promise<Blob> {
+  if (isMockEnabled()) {
+    const { getMockBlobResponse } = await import("./mocks")
+    try {
+      return await getMockBlobResponse(path, init)
+    } catch {
+      throw new Error("Mode mock actif, mais aucun export mock n'est defini pour ce flux.")
+    }
+  }
+
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`
+  const url = path.startsWith("http") ? path : `${getApiBaseUrl()}${normalizedPath}`
+
+  let response: Response
+  try {
+    response = await fetch(url, {
+      ...init,
+      cache: "no-store",
+      credentials: "same-origin",
+    })
+  } catch {
+    const fallback = await tryMockBlobFallback(path, init)
+    if (fallback !== null) return fallback
+    throw new Error(`Connexion API impossible (${normalizedPath}). ${friendlyProxyHint()}`)
+  }
+
+  if (!response.ok) {
+    if (isRecoverableProxyStatus(response.status)) {
+      const fallback = await tryMockBlobFallback(path, init)
+      if (fallback !== null) return fallback
+    }
+    const message = await parseErrorMessage(response, normalizedPath)
+    throw new Error(message)
+  }
+
+  return response.blob()
 }

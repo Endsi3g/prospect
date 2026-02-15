@@ -17,6 +17,7 @@ from threading import Lock
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, FastAPI, File, Form, HTTPException, Query, UploadFile, status
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response
 from fastapi.templating import Jinja2Templates
@@ -24,6 +25,7 @@ from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import func, or_, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.requests import Request
 
 from ..core.database import DATABASE_URL, Base, SessionLocal, engine, get_db
@@ -40,11 +42,16 @@ from ..core.db_models import (
     DBAuditLog,
     DBBillingInvoice,
     DBBillingProfile,
+    DBCampaign,
+    DBCampaignRun,
+    DBCampaignSequence,
     DBCompany,
     DBIntegrationConfig,
+    DBInteraction,
     DBLead,
     DBNotification,
     DBNotificationPreference,
+    DBOpportunity,
     DBProject,
     DBReportRun,
     DBReportSchedule,
@@ -56,6 +63,9 @@ from ..core.models import Company, Interaction, Lead, LeadStage, LeadStatus
 from ..scoring.engine import ScoringEngine
 from . import assistant_service as _ast_svc
 from . import assistant_store as _ast_store
+from . import campaign_service as _campaign_svc
+from . import content_service as _content_svc
+from . import enrichment_service as _enrichment_svc
 from .assistant_types import AssistantConfirmRequest, AssistantRunRequest
 from .diagnostics_service import (
     get_latest_autofix,
@@ -160,6 +170,20 @@ DEFAULT_INTEGRATION_CATALOG: dict[str, dict[str, Any]] = {
 PROJECT_STATUSES = {"Planning", "In Progress", "On Hold", "Completed", "Cancelled"}
 TASK_STATUSES = {"To Do", "In Progress", "Done"}
 TASK_PRIORITIES = {"Low", "Medium", "High", "Critical"}
+TASK_CHANNELS = {"email", "linkedin", "call"}
+TASK_SOURCES = {"manual", "auto-rule", "assistant"}
+OPPORTUNITY_STAGES = {
+    "qualification",
+    "discovery",
+    "proposal",
+    "negotiation",
+    "won",
+    "lost",
+}
+OPPORTUNITY_STATUSES = {"open", "won", "lost"}
+OPPORTUNITY_PIPELINE_STAGES = ("Prospect", "Qualified", "Proposed", "Won", "Lost")
+OPPORTUNITY_PIPELINE_STAGE_SET = set(OPPORTUNITY_PIPELINE_STAGES)
+AUTO_TASK_DEFAULT_CHANNELS = ["email", "linkedin", "call"]
 USER_STATUSES = {"active", "invited", "disabled"}
 THEME_OPTIONS = {"light", "dark", "system"}
 REFRESH_MODES = {"manual", "polling"}
@@ -182,6 +206,9 @@ NOTIFICATION_EVENT_KEYS = {
 }
 REPORT_FREQUENCIES = {"daily", "weekly", "monthly"}
 REPORT_FORMATS = {"pdf", "csv"}
+SYNC_STALE_WARNING_SECONDS = 5 * 60
+SYNC_STALE_ERROR_SECONDS = 30 * 60
+INTEGRITY_STALE_UNSCORED_DAYS = 14
 
 
 class InMemoryRateLimiter:
@@ -310,6 +337,85 @@ class AdminLeadCreateRequest(BaseModel):
     segment: str | None = None
 
 
+class AdminLeadUpdateRequest(BaseModel):
+    first_name: str | None = None
+    last_name: str | None = None
+    email: EmailStr | None = None
+    title: str | None = None
+    phone: str | None = None
+    linkedin_url: str | None = None
+    status: str | None = None
+    segment: str | None = None
+    tags: list[str] | None = None
+    company_name: str | None = None
+    company_domain: str | None = None
+    company_industry: str | None = None
+    company_location: str | None = None
+
+
+class AdminLeadOpportunityCreateRequest(BaseModel):
+    name: str = Field(min_length=2)
+    stage: str | None = None
+    status: str | None = None
+    amount: float | None = Field(default=None, ge=0)
+    probability: int | None = Field(default=None, ge=0, le=100)
+    expected_close_date: str | None = None
+    details: dict[str, Any] | None = None
+
+
+class AdminLeadOpportunityUpdateRequest(BaseModel):
+    name: str | None = Field(default=None, min_length=2)
+    stage: str | None = None
+    status: str | None = None
+    amount: float | None = Field(default=None, ge=0)
+    probability: int | None = Field(default=None, ge=0, le=100)
+    expected_close_date: str | None = None
+    details: dict[str, Any] | None = None
+
+
+class AdminOpportunityCreateRequest(BaseModel):
+    prospect_id: str = Field(min_length=1)
+    amount: float = Field(ge=0)
+    stage: str
+    probability: int = Field(ge=0, le=100)
+    close_date: str | None = None
+    assigned_to: str | None = None
+    name: str | None = None
+
+
+class AdminOpportunityUpdateRequest(BaseModel):
+    prospect_id: str | None = Field(default=None, min_length=1)
+    amount: float | None = Field(default=None, ge=0)
+    stage: str | None = None
+    probability: int | None = Field(default=None, ge=0, le=100)
+    close_date: str | None = None
+    assigned_to: str | None = None
+    name: str | None = Field(default=None, min_length=2)
+
+
+class AdminOpportunityQuickLeadRequest(BaseModel):
+    first_name: str = Field(min_length=1)
+    last_name: str = Field(min_length=1)
+    email: EmailStr
+    company_name: str = Field(min_length=1)
+
+
+class AdminLeadNoteItemPayload(BaseModel):
+    id: str | None = None
+    content: str = Field(min_length=1)
+    author: str | None = None
+    created_at: str | None = None
+    updated_at: str | None = None
+
+
+class AdminLeadNotesUpdateRequest(BaseModel):
+    items: list[AdminLeadNoteItemPayload] = Field(default_factory=list)
+
+
+class AdminLeadAddToCampaignRequest(BaseModel):
+    campaign_id: str = Field(min_length=1)
+
+
 class AdminBulkDeleteRequest(BaseModel):
     ids: list[str] = Field(default_factory=list)
     segment: str | None = None
@@ -317,20 +423,58 @@ class AdminBulkDeleteRequest(BaseModel):
 
 class AdminTaskCreateRequest(BaseModel):
     title: str
+    description: str | None = None
     status: str | None = None
     priority: str | None = None
     due_date: str | None = None
     assigned_to: str | None = None
     lead_id: str | None = None
+    project_id: str | None = None
+    project_name: str | None = None
+    channel: str | None = None
+    sequence_step: int | None = Field(default=None, ge=1, le=30)
+    source: str | None = None
+    rule_id: str | None = None
+    score_snapshot: dict[str, Any] | None = None
+    subtasks: list[dict[str, Any]] | None = None
+    attachments: list[dict[str, Any]] | None = None
 
 
 class AdminTaskUpdateRequest(BaseModel):
     title: str | None = Field(default=None, min_length=1)
+    description: str | None = None
     status: str | None = None
     priority: str | None = None
     due_date: str | None = None
     assigned_to: str | None = None
     lead_id: str | None = None
+    project_id: str | None = None
+    project_name: str | None = None
+    channel: str | None = None
+    sequence_step: int | None = Field(default=None, ge=1, le=30)
+    source: str | None = None
+    rule_id: str | None = None
+    score_snapshot: dict[str, Any] | None = None
+    subtasks: list[dict[str, Any]] | None = None
+    comments: list[dict[str, Any]] | None = None
+    attachments: list[dict[str, Any]] | None = None
+
+
+class AdminTaskCommentCreateRequest(BaseModel):
+    body: str = Field(min_length=1)
+    mentions: list[str] = Field(default_factory=list)
+    author: str | None = None
+
+
+class AdminTaskCloseRequest(BaseModel):
+    note: str | None = None
+
+
+class AdminLeadAutoTaskCreateRequest(BaseModel):
+    channels: list[str] = Field(default_factory=lambda: list(AUTO_TASK_DEFAULT_CHANNELS))
+    mode: str = "append"
+    dry_run: bool = False
+    assigned_to: str | None = None
 
 
 class AdminProjectCreateRequest(BaseModel):
@@ -338,6 +482,12 @@ class AdminProjectCreateRequest(BaseModel):
     description: str | None = None
     status: str | None = None
     lead_id: str | None = None
+    progress_percent: int | None = Field(default=None, ge=0, le=100)
+    budget_total: float | None = Field(default=None, ge=0)
+    budget_spent: float | None = Field(default=None, ge=0)
+    team: list[dict[str, Any]] | None = None
+    timeline: list[dict[str, Any]] | None = None
+    deliverables: list[dict[str, Any]] | None = None
     due_date: str | None = None
 
 
@@ -346,6 +496,12 @@ class AdminProjectUpdateRequest(BaseModel):
     description: str | None = None
     status: str | None = None
     lead_id: str | None = None
+    progress_percent: int | None = Field(default=None, ge=0, le=100)
+    budget_total: float | None = Field(default=None, ge=0)
+    budget_spent: float | None = Field(default=None, ge=0)
+    team: list[dict[str, Any]] | None = None
+    timeline: list[dict[str, Any]] | None = None
+    deliverables: list[dict[str, Any]] | None = None
     due_date: str | None = None
 
 
@@ -498,6 +654,67 @@ class AdminReportScheduleUpdateRequest(BaseModel):
     recipients: list[EmailStr] | None = None
     filters: dict[str, Any] | None = None
     enabled: bool | None = None
+
+
+class CampaignSequenceCreateRequest(BaseModel):
+    name: str = Field(min_length=2)
+    description: str | None = None
+    status: str = "draft"
+    channels: list[str] = Field(default_factory=list)
+    steps: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class CampaignSequenceUpdateRequest(BaseModel):
+    name: str | None = Field(default=None, min_length=2)
+    description: str | None = None
+    status: str | None = None
+    channels: list[str] | None = None
+    steps: list[dict[str, Any]] | None = None
+
+
+class CampaignSequenceSimulateRequest(BaseModel):
+    lead_context: dict[str, Any] = Field(default_factory=dict)
+    start_at: str | None = None
+
+
+class CampaignCreateRequest(BaseModel):
+    name: str = Field(min_length=2)
+    description: str | None = None
+    status: str = "draft"
+    sequence_id: str | None = None
+    channel_strategy: dict[str, Any] = Field(default_factory=dict)
+    enrollment_filter: dict[str, Any] = Field(default_factory=dict)
+
+
+class CampaignUpdateRequest(BaseModel):
+    name: str | None = Field(default=None, min_length=2)
+    description: str | None = None
+    status: str | None = None
+    sequence_id: str | None = None
+    channel_strategy: dict[str, Any] | None = None
+    enrollment_filter: dict[str, Any] | None = None
+
+
+class CampaignEnrollRequest(BaseModel):
+    lead_ids: list[str] = Field(default_factory=list)
+    filters: dict[str, Any] = Field(default_factory=dict)
+    max_leads: int = Field(default=50, ge=1, le=500)
+
+
+class ContentGenerateRequest(BaseModel):
+    lead_id: str | None = None
+    channel: str = Field(min_length=2)
+    step: int = Field(default=1, ge=1, le=20)
+    template_key: str | None = None
+    context: dict[str, Any] = Field(default_factory=dict)
+    provider: str = "deterministic"
+
+
+class EnrichmentRunRequest(BaseModel):
+    query: str = Field(min_length=2)
+    lead_id: str | None = None
+    provider: str = "mock"
+    context: dict[str, Any] = Field(default_factory=dict)
 
 
 class ResearchRequest(BaseModel):
@@ -719,6 +936,90 @@ def _client_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 
+def _status_error_code(status_code: int) -> str:
+    if status_code == status.HTTP_400_BAD_REQUEST:
+        return "BAD_REQUEST"
+    if status_code == status.HTTP_401_UNAUTHORIZED:
+        return "UNAUTHORIZED"
+    if status_code == status.HTTP_403_FORBIDDEN:
+        return "FORBIDDEN"
+    if status_code == status.HTTP_404_NOT_FOUND:
+        return "NOT_FOUND"
+    if status_code == status.HTTP_409_CONFLICT:
+        return "CONFLICT"
+    if status_code in {HTTP_422_STATUS, status.HTTP_422_UNPROCESSABLE_ENTITY}:
+        return "VALIDATION_ERROR"
+    if status_code == status.HTTP_429_TOO_MANY_REQUESTS:
+        return "RATE_LIMITED"
+    if status_code in {
+        status.HTTP_500_INTERNAL_SERVER_ERROR,
+        status.HTTP_502_BAD_GATEWAY,
+        status.HTTP_503_SERVICE_UNAVAILABLE,
+        status.HTTP_504_GATEWAY_TIMEOUT,
+    }:
+        return "UPSTREAM_UNAVAILABLE" if status_code in {502, 503, 504} else "INTERNAL_ERROR"
+    return "HTTP_ERROR"
+
+
+def _is_retryable_status(status_code: int) -> bool:
+    return status_code in {
+        status.HTTP_408_REQUEST_TIMEOUT,
+        status.HTTP_429_TOO_MANY_REQUESTS,
+        status.HTTP_500_INTERNAL_SERVER_ERROR,
+        status.HTTP_502_BAD_GATEWAY,
+        status.HTTP_503_SERVICE_UNAVAILABLE,
+        status.HTTP_504_GATEWAY_TIMEOUT,
+    }
+
+
+def _extract_error_message_and_details(detail: Any) -> tuple[str, dict[str, Any]]:
+    if isinstance(detail, str):
+        return detail, {}
+    if isinstance(detail, list):
+        return "Request validation failed.", {"issues": detail}
+    if isinstance(detail, dict):
+        message = detail.get("message")
+        if not isinstance(message, str) or not message.strip():
+            message = "Request failed."
+        details = {k: v for k, v in detail.items() if k != "message"}
+        return message, details
+    if detail is None:
+        return "Request failed.", {}
+    return str(detail), {}
+
+
+def _error_response(
+    request: Request,
+    *,
+    status_code: int,
+    code: str | None = None,
+    message: str,
+    details: dict[str, Any] | None = None,
+    retryable: bool | None = None,
+    headers: dict[str, str] | None = None,
+) -> JSONResponse:
+    request_id = getattr(request.state, "request_id", None) or request.headers.get("x-request-id")
+    payload = {
+        "error": {
+            "code": code or _status_error_code(status_code),
+            "message": message,
+            "details": details or {},
+            "retryable": _is_retryable_status(status_code) if retryable is None else bool(retryable),
+            "request_id": request_id,
+        },
+        "detail": message,
+    }
+    response = JSONResponse(status_code=status_code, content=payload)
+    if request_id:
+        response.headers["x-request-id"] = str(request_id)
+    if headers:
+        for key, value in headers.items():
+            if value is None:
+                continue
+            response.headers[key] = value
+    return response
+
+
 def _should_use_secure_cookies() -> bool:
     raw = os.getenv("AUTH_COOKIE_SECURE", DEFAULT_AUTH_COOKIE_SECURE).strip().lower()
     if raw in {"1", "true", "yes"}:
@@ -895,6 +1196,87 @@ def _coerce_lead_status(raw_status: str | None) -> LeadStatus:
         return LeadStatus.NEW
 
 
+def _validate_lead_status(raw_status: str) -> LeadStatus:
+    normalized = raw_status.strip().upper()
+    try:
+        return LeadStatus(normalized)
+    except ValueError as exc:
+        allowed = ", ".join(sorted(item.value for item in LeadStatus))
+        raise HTTPException(
+            status_code=HTTP_422_STATUS,
+            detail=f"Unsupported lead status: {raw_status}. Allowed: {allowed}",
+        ) from exc
+
+
+def _coerce_opportunity_stage(raw_value: str | None) -> str:
+    if not raw_value:
+        return "qualification"
+    candidate = raw_value.strip().lower()
+    if candidate not in OPPORTUNITY_STAGES:
+        allowed = ", ".join(sorted(OPPORTUNITY_STAGES))
+        raise HTTPException(
+            status_code=HTTP_422_STATUS,
+            detail=f"Unsupported opportunity stage: {raw_value}. Allowed: {allowed}",
+        )
+    return candidate
+
+
+def _coerce_opportunity_status(raw_value: str | None) -> str:
+    if not raw_value:
+        return "open"
+    candidate = raw_value.strip().lower()
+    if candidate not in OPPORTUNITY_STATUSES:
+        allowed = ", ".join(sorted(OPPORTUNITY_STATUSES))
+        raise HTTPException(
+            status_code=HTTP_422_STATUS,
+            detail=f"Unsupported opportunity status: {raw_value}. Allowed: {allowed}",
+        )
+    return candidate
+
+
+def _coerce_pipeline_opportunity_stage(raw_value: str | None) -> str:
+    if not raw_value:
+        return "Prospect"
+    candidate = raw_value.strip().lower()
+    aliases = {
+        "prospect": "Prospect",
+        "qualified": "Qualified",
+        "proposed": "Proposed",
+        "won": "Won",
+        "lost": "Lost",
+        "qualification": "Prospect",
+        "discovery": "Qualified",
+        "proposal": "Proposed",
+        "negotiation": "Proposed",
+    }
+    if candidate in aliases:
+        return aliases[candidate]
+    for known in OPPORTUNITY_PIPELINE_STAGES:
+        if known.lower() == candidate:
+            return known
+    allowed = ", ".join(OPPORTUNITY_PIPELINE_STAGES)
+    raise HTTPException(
+        status_code=HTTP_422_STATUS,
+        detail=f"Unsupported opportunity stage: {raw_value}. Allowed: {allowed}",
+    )
+
+
+def _infer_opportunity_status_from_stage(stage: str) -> str:
+    lowered = stage.strip().lower()
+    if lowered == "won":
+        return "won"
+    if lowered == "lost":
+        return "lost"
+    return "open"
+
+
+def _coerce_assigned_to(raw_value: str | None) -> str:
+    cleaned = (raw_value or "").strip()
+    if cleaned:
+        return cleaned
+    return "Vous"
+
+
 def _coerce_project_status(raw_status: str | None) -> str:
     if not raw_status:
         return "Planning"
@@ -906,6 +1288,38 @@ def _coerce_project_status(raw_status: str | None) -> str:
         status_code=HTTP_422_STATUS,
         detail=f"Unsupported project status: {raw_status}",
     )
+
+
+def _coerce_progress_percent(raw_value: int | None) -> int:
+    if raw_value is None:
+        return 0
+    return max(0, min(int(raw_value), 100))
+
+
+def _coerce_budget_value(raw_value: float | None, *, default_zero: bool = False) -> float | None:
+    if raw_value is None:
+        return 0.0 if default_zero else None
+    value = float(raw_value)
+    if value < 0:
+        raise HTTPException(
+            status_code=HTTP_422_STATUS,
+            detail="Budget values must be greater than or equal to 0.",
+        )
+    return round(value, 2)
+
+
+def _normalize_project_list_payload(raw_items: list[dict[str, Any]] | None, *, field_name: str) -> list[dict[str, Any]]:
+    if not raw_items:
+        return []
+    normalized: list[dict[str, Any]] = []
+    for index, item in enumerate(raw_items):
+        if not isinstance(item, dict):
+            continue
+        clean = dict(item)
+        if not clean.get("id"):
+            clean["id"] = f"{field_name}-{index + 1}"
+        normalized.append(clean)
+    return normalized
 
 
 def _coerce_task_status(raw_status: str | None) -> str:
@@ -932,6 +1346,159 @@ def _coerce_task_priority(raw_priority: str | None) -> str:
         status_code=HTTP_422_STATUS,
         detail=f"Unsupported task priority: {raw_priority}",
     )
+
+
+def _coerce_task_channel(raw_channel: str | None) -> str:
+    if not raw_channel:
+        return "email"
+    candidate = raw_channel.strip().lower()
+    if candidate in TASK_CHANNELS:
+        return candidate
+    raise HTTPException(
+        status_code=HTTP_422_STATUS,
+        detail=f"Unsupported task channel: {raw_channel}",
+    )
+
+
+def _coerce_task_source(raw_source: str | None) -> str:
+    if not raw_source:
+        return "manual"
+    candidate = raw_source.strip().lower()
+    if candidate in TASK_SOURCES:
+        return candidate
+    raise HTTPException(
+        status_code=HTTP_422_STATUS,
+        detail=f"Unsupported task source: {raw_source}",
+    )
+
+
+def _normalize_task_subtasks_payload(raw_items: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    if not raw_items:
+        return []
+    now_iso = datetime.now().isoformat()
+    normalized: list[dict[str, Any]] = []
+    for index, item in enumerate(raw_items):
+        if not isinstance(item, dict):
+            continue
+        title = str(item.get("title") or "").strip()
+        if not title:
+            continue
+        normalized.append(
+            {
+                "id": str(item.get("id") or f"subtask-{index + 1}"),
+                "title": title,
+                "done": bool(item.get("done", False)),
+                "created_at": str(item.get("created_at") or now_iso),
+                "updated_at": str(item.get("updated_at") or now_iso),
+            }
+        )
+    return normalized
+
+
+def _normalize_task_comments_payload(raw_items: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    if not raw_items:
+        return []
+    now_iso = datetime.now().isoformat()
+    normalized: list[dict[str, Any]] = []
+    for item in raw_items:
+        if not isinstance(item, dict):
+            continue
+        body = str(item.get("body") or "").strip()
+        if not body:
+            continue
+        raw_mentions = item.get("mentions")
+        mentions = (
+            [str(mention).strip() for mention in raw_mentions if str(mention).strip()]
+            if isinstance(raw_mentions, list)
+            else []
+        )
+        normalized.append(
+            {
+                "id": str(item.get("id") or str(uuid.uuid4())),
+                "body": body,
+                "author": str(item.get("author") or "Vous"),
+                "mentions": mentions,
+                "created_at": str(item.get("created_at") or now_iso),
+            }
+        )
+    return normalized
+
+
+def _normalize_task_attachments_payload(raw_items: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    if not raw_items:
+        return []
+    now_iso = datetime.now().isoformat()
+    normalized: list[dict[str, Any]] = []
+    for item in raw_items:
+        if not isinstance(item, dict):
+            continue
+        url = str(item.get("url") or "").strip()
+        name = str(item.get("name") or url or "").strip()
+        if not name:
+            continue
+        try:
+            size_kb = float(item.get("size_kb", 0) or 0)
+        except (TypeError, ValueError):
+            size_kb = 0.0
+        normalized.append(
+            {
+                "id": str(item.get("id") or str(uuid.uuid4())),
+                "name": name,
+                "url": url or None,
+                "size_kb": size_kb,
+                "created_at": str(item.get("created_at") or now_iso),
+            }
+        )
+    return normalized
+
+
+def _normalize_task_timeline_payload(raw_items: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    if not raw_items:
+        return []
+    normalized: list[dict[str, Any]] = []
+    for item in raw_items:
+        if not isinstance(item, dict):
+            continue
+        event_type = str(item.get("event_type") or "").strip()
+        message = str(item.get("message") or "").strip()
+        if not event_type and not message:
+            continue
+        normalized.append(
+            {
+                "id": str(item.get("id") or str(uuid.uuid4())),
+                "event_type": event_type or "updated",
+                "message": message or "Tache mise a jour.",
+                "actor": str(item.get("actor") or "system"),
+                "created_at": str(item.get("created_at") or datetime.now().isoformat()),
+                "metadata": item.get("metadata") if isinstance(item.get("metadata"), dict) else {},
+            }
+        )
+    normalized.sort(key=lambda item: str(item.get("created_at") or ""), reverse=True)
+    return normalized
+
+
+def _append_task_timeline_entry(
+    task: DBTask,
+    *,
+    event_type: str,
+    message: str,
+    actor: str = "system",
+    metadata: dict[str, Any] | None = None,
+    created_at: datetime | None = None,
+) -> None:
+    timeline = _normalize_task_timeline_payload(list(task.timeline_json or []))
+    timeline.insert(
+        0,
+        {
+            "id": str(uuid.uuid4()),
+            "event_type": event_type,
+            "message": message,
+            "actor": actor,
+            "created_at": (created_at or datetime.now()).isoformat(),
+            "metadata": metadata or {},
+        },
+    )
+    task.timeline_json = timeline[:200]
 
 
 def _coerce_theme(raw_theme: str | None) -> str:
@@ -1005,6 +1572,156 @@ def _coerce_report_format(raw_format: str | None) -> str:
         status_code=HTTP_422_STATUS,
         detail=f"Unsupported report format: {raw_format}",
     )
+
+
+def _parse_window_days(window: str | None, *, default_days: int = 30) -> tuple[str, int]:
+    candidate = (window or f"{default_days}d").strip().lower()
+    if candidate == "ytd":
+        now = datetime.now()
+        start = datetime(now.year, 1, 1)
+        return "ytd", max(1, (now - start).days + 1)
+    if candidate.endswith("d"):
+        raw_days = candidate[:-1]
+        try:
+            days = int(raw_days)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=HTTP_422_STATUS,
+                detail=f"Unsupported window: {window}",
+            ) from exc
+        if days <= 0 or days > 365:
+            raise HTTPException(
+                status_code=HTTP_422_STATUS,
+                detail=f"Unsupported window: {window}",
+            )
+        return candidate, days
+    raise HTTPException(
+        status_code=HTTP_422_STATUS,
+        detail=f"Unsupported window: {window}",
+    )
+
+
+def _normalize_task_channels(raw_channels: list[str] | None) -> list[str]:
+    if not raw_channels:
+        return list(AUTO_TASK_DEFAULT_CHANNELS)
+    cleaned: list[str] = []
+    for channel in raw_channels:
+        normalized = _coerce_task_channel(channel)
+        if normalized not in cleaned:
+            cleaned.append(normalized)
+    return cleaned
+
+
+def _lead_score_snapshot(db_lead: DBLead) -> dict[str, Any]:
+    return {
+        "total_score": round(float(db_lead.total_score or 0.0), 2),
+        "icp_score": round(float(db_lead.icp_score or 0.0), 2),
+        "heat_score": round(float(db_lead.heat_score or 0.0), 2),
+        "tier": db_lead.tier or "Tier D",
+        "heat_status": db_lead.heat_status or "Cold",
+        "next_best_action": db_lead.next_best_action,
+        "last_scored_at": db_lead.last_scored_at.isoformat() if db_lead.last_scored_at else None,
+    }
+
+
+def _communication_rule_for_lead(db_lead: DBLead) -> dict[str, Any]:
+    total_score = float(db_lead.total_score or 0.0)
+    tier = (db_lead.tier or "Tier D").strip()
+    heat_status = (db_lead.heat_status or "Cold").strip().lower()
+    next_best_action = (db_lead.next_best_action or "").strip()
+
+    if total_score >= 85 or tier.upper() == "TIER A":
+        return {
+            "rule_id": "tier_a_hot_accelerated",
+            "name": "Acceleration niveau A",
+            "priority": "high",
+            "confidence": 0.9,
+            "steps": [
+                {"day_offset": 0, "channel": "call", "priority": "Critical"},
+                {"day_offset": 0, "channel": "email", "priority": "High"},
+                {"day_offset": 2, "channel": "linkedin", "priority": "High"},
+            ],
+            "reasoning": [
+                f"Score eleve ({round(total_score, 1)}/100) ou tier premium ({tier}).",
+                "Cadence serree recommandee pour maximiser le taux de conversion.",
+            ],
+        }
+
+    if heat_status in {"hot", "warm"} or total_score >= 65:
+        return {
+            "rule_id": "warm_nurture_multichannel",
+            "name": "Nurturing multicanal",
+            "priority": "medium",
+            "confidence": 0.78,
+            "steps": [
+                {"day_offset": 0, "channel": "email", "priority": "High"},
+                {"day_offset": 2, "channel": "linkedin", "priority": "Medium"},
+                {"day_offset": 5, "channel": "call", "priority": "Medium"},
+            ],
+            "reasoning": [
+                "Signal de chaleur present, necessite une sequence reguliere.",
+                f"Next best action: {next_best_action or 'n/a'}.",
+            ],
+        }
+
+    return {
+        "rule_id": "cold_light_touch",
+        "name": "Approche progressive",
+        "priority": "low",
+        "confidence": 0.62,
+        "steps": [
+            {"day_offset": 0, "channel": "email", "priority": "Medium"},
+            {"day_offset": 5, "channel": "linkedin", "priority": "Low"},
+            {"day_offset": 10, "channel": "call", "priority": "Low"},
+        ],
+        "reasoning": [
+            "Lead froid ou score modeste, sequence douce recommandee.",
+            "Objectif: qualification progressive sans pression excessive.",
+        ],
+    }
+
+
+def _build_communication_plan_payload(
+    db_lead: DBLead,
+    *,
+    channels: list[str] | None = None,
+) -> dict[str, Any]:
+    available_channels = _normalize_task_channels(channels)
+    rule = _communication_rule_for_lead(db_lead)
+    sequence: list[dict[str, Any]] = []
+    step_index = 1
+    for step in rule["steps"]:
+        channel = step["channel"]
+        if channel not in available_channels:
+            continue
+        sequence.append(
+            {
+                "step": step_index,
+                "day_offset": int(step["day_offset"]),
+                "channel": channel,
+                "title": f"{channel.upper()} - {db_lead.first_name or db_lead.email}",
+                "priority": step["priority"],
+                "suggested_message": db_lead.next_best_action
+                or "Relance personnalisee selon profil et dernier signal detecte.",
+            }
+        )
+        step_index += 1
+
+    return {
+        "lead_id": db_lead.id,
+        "version": "v1",
+        "generated_at": datetime.now().isoformat(),
+        "rule": {
+            "id": rule["rule_id"],
+            "name": rule["name"],
+            "priority": rule["priority"],
+        },
+        "confidence": rule["confidence"],
+        "reasoning": rule["reasoning"],
+        "available_channels": available_channels,
+        "recommended_sequence": sequence,
+        "score_snapshot": _lead_score_snapshot(db_lead),
+    }
 
 
 def _compute_next_run_at(
@@ -1241,6 +1958,18 @@ def _db_to_lead(db_lead: DBLead) -> Lead:
         for interaction in db_lead.interactions
     ]
 
+    score_payload = {
+        "icp_score": float(db_lead.icp_score or 0.0),
+        "heat_score": float(db_lead.heat_score or 0.0),
+        "total_score": float(db_lead.total_score or 0.0),
+        "tier": db_lead.tier or "Tier D",
+        "heat_status": db_lead.heat_status or "Cold",
+        "next_best_action": db_lead.next_best_action,
+        "icp_breakdown": db_lead.icp_breakdown or {},
+        "heat_breakdown": db_lead.heat_breakdown or {},
+        "last_scored_at": db_lead.last_scored_at,
+    }
+
     return Lead(
         id=db_lead.id,
         first_name=db_lead.first_name or "Unknown",
@@ -1252,7 +1981,11 @@ def _db_to_lead(db_lead: DBLead) -> Lead:
         company=company,
         status=db_lead.status,
         segment=db_lead.segment,
+        total_score=score_payload["total_score"],
+        score=score_payload,
         interactions=interactions,
+        outcome=db_lead.outcome,
+        stage=db_lead.stage or LeadStage.NEW,
         details=db_lead.details or {},
         tags=db_lead.tags or [],
         created_at=db_lead.created_at,
@@ -1260,17 +1993,67 @@ def _db_to_lead(db_lead: DBLead) -> Lead:
     )
 
 
-def _serialize_task(task: DBTask) -> dict[str, Any]:
+def _serialize_task_lead_summary(lead: DBLead) -> dict[str, Any]:
+    full_name = f"{lead.first_name or ''} {lead.last_name or ''}".strip() or lead.email
     return {
+        "id": lead.id,
+        "name": full_name,
+        "email": lead.email,
+        "status": lead.status.value if hasattr(lead.status, "value") else str(lead.status),
+        "company_name": lead.company.name if lead.company else None,
+        "total_score": float(lead.total_score or 0.0),
+        "tier": lead.tier or "Tier D",
+        "heat_status": lead.heat_status or "Cold",
+    }
+
+
+def _serialize_task_project_summary(project: DBProject | None, *, project_name: str | None = None) -> dict[str, Any] | None:
+    if project is None and not project_name:
+        return None
+    return {
+        "id": project.id if project else None,
+        "name": project.name if project else project_name,
+        "status": project.status if project else None,
+        "due_date": project.due_date.isoformat() if project and project.due_date else None,
+    }
+
+
+def _serialize_task(
+    task: DBTask,
+    *,
+    lead: DBLead | None = None,
+    project: DBProject | None = None,
+) -> dict[str, Any]:
+    payload = {
         "id": task.id,
         "title": task.title,
+        "description": task.description,
         "status": task.status,
         "priority": task.priority,
         "due_date": task.due_date.isoformat() if task.due_date else None,
         "assigned_to": task.assigned_to,
         "lead_id": task.lead_id,
+        "project_id": task.project_id,
+        "project_name": task.project_name,
+        "channel": task.channel or "email",
+        "sequence_step": int(task.sequence_step or 1),
+        "source": task.source or "manual",
+        "rule_id": task.rule_id,
+        "related_score_snapshot": task.score_snapshot_json or {},
+        "subtasks": list(task.subtasks_json or []),
+        "comments": list(task.comments_json or []),
+        "attachments": list(task.attachments_json or []),
+        "timeline": list(task.timeline_json or []),
         "created_at": task.created_at.isoformat() if task.created_at else None,
+        "updated_at": task.updated_at.isoformat() if task.updated_at else None,
+        "closed_at": task.closed_at.isoformat() if task.closed_at else None,
     }
+    if lead is not None:
+        payload["lead"] = _serialize_task_lead_summary(lead)
+    project_payload = _serialize_task_project_summary(project, project_name=task.project_name)
+    if project_payload is not None:
+        payload["project"] = project_payload
+    return payload
 
 
 def _serialize_project(project: DBProject) -> dict[str, Any]:
@@ -1280,10 +2063,74 @@ def _serialize_project(project: DBProject) -> dict[str, Any]:
         "description": project.description,
         "status": project.status,
         "lead_id": project.lead_id,
+        "progress_percent": int(project.progress_percent or 0),
+        "budget_total": float(project.budget_total) if project.budget_total is not None else None,
+        "budget_spent": float(project.budget_spent or 0.0),
+        "team": list(project.team_json or []),
+        "timeline": list(project.timeline_json or []),
+        "deliverables": list(project.deliverables_json or []),
         "due_date": project.due_date.isoformat() if project.due_date else None,
         "created_at": project.created_at.isoformat() if project.created_at else None,
         "updated_at": project.updated_at.isoformat() if project.updated_at else None,
     }
+
+
+def _serialize_interaction(interaction: DBInteraction) -> dict[str, Any]:
+    interaction_type = interaction.type.value if hasattr(interaction.type, "value") else str(interaction.type)
+    return {
+        "id": str(interaction.id),
+        "lead_id": interaction.lead_id,
+        "type": interaction_type,
+        "timestamp": interaction.timestamp.isoformat() if interaction.timestamp else None,
+        "details": interaction.details or {},
+    }
+
+
+def _serialize_opportunity(opportunity: DBOpportunity) -> dict[str, Any]:
+    close_date = opportunity.expected_close_date.isoformat() if opportunity.expected_close_date else None
+    return {
+        "id": opportunity.id,
+        "lead_id": opportunity.lead_id,
+        "prospect_id": opportunity.lead_id,
+        "name": opportunity.name,
+        "stage": opportunity.stage,
+        "status": opportunity.status,
+        "amount": float(opportunity.amount) if opportunity.amount is not None else None,
+        "probability": int(opportunity.probability or 0),
+        "assigned_to": _coerce_assigned_to(opportunity.assigned_to),
+        "expected_close_date": close_date,
+        "close_date": close_date,
+        "details": dict(opportunity.details_json or {}),
+        "created_at": opportunity.created_at.isoformat() if opportunity.created_at else None,
+        "updated_at": opportunity.updated_at.isoformat() if opportunity.updated_at else None,
+    }
+
+
+def _normalize_lead_notes(raw_notes: Any) -> list[dict[str, Any]]:
+    if not isinstance(raw_notes, list):
+        return []
+    normalized: list[dict[str, Any]] = []
+    for item in raw_notes:
+        if not isinstance(item, dict):
+            continue
+        content = str(item.get("content") or "").strip()
+        if not content:
+            continue
+        normalized.append(
+            {
+                "id": str(item.get("id") or str(uuid.uuid4())),
+                "content": content,
+                "author": str(item.get("author") or "admin"),
+                "created_at": str(item.get("created_at") or datetime.utcnow().isoformat()),
+                "updated_at": str(item.get("updated_at") or datetime.utcnow().isoformat()),
+            }
+        )
+    return normalized
+
+
+def _lead_notes_from_details(details: dict[str, Any] | None) -> list[dict[str, Any]]:
+    payload = details if isinstance(details, dict) else {}
+    return _normalize_lead_notes(payload.get("notes"))
 
 
 def _create_lead_payload(db: Session, payload: AdminLeadCreateRequest) -> dict[str, Any]:
@@ -1339,11 +2186,136 @@ def _create_lead_payload(db: Session, payload: AdminLeadCreateRequest) -> dict[s
     }
 
 
+def _apply_lead_update_payload(
+    db: Session,
+    *,
+    db_lead: DBLead,
+    payload: AdminLeadUpdateRequest,
+) -> tuple[Lead, dict[str, dict[str, Any]]]:
+    update_data = payload.model_dump(exclude_unset=True)
+    if not update_data:
+        return _db_to_lead(db_lead), {}
+
+    changes: dict[str, dict[str, Any]] = {}
+
+    def track_change(field: str, before: Any, after: Any) -> None:
+        if before == after:
+            return
+        changes[field] = {"from": before, "to": after}
+
+    if "first_name" in update_data:
+        next_value = (payload.first_name or "").strip()
+        if not next_value:
+            raise HTTPException(status_code=HTTP_422_STATUS, detail="first_name cannot be empty.")
+        track_change("first_name", db_lead.first_name, next_value)
+        db_lead.first_name = next_value
+
+    if "last_name" in update_data:
+        next_value = (payload.last_name or "").strip()
+        if not next_value:
+            raise HTTPException(status_code=HTTP_422_STATUS, detail="last_name cannot be empty.")
+        track_change("last_name", db_lead.last_name, next_value)
+        db_lead.last_name = next_value
+
+    if "email" in update_data:
+        next_email = str(payload.email).strip().lower() if payload.email is not None else ""
+        if not next_email:
+            raise HTTPException(status_code=HTTP_422_STATUS, detail="email cannot be empty.")
+        if next_email != db_lead.email:
+            existing = db.query(DBLead).filter(DBLead.email == next_email, DBLead.id != db_lead.id).first()
+            if existing:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=f"Lead already exists for email {next_email}.",
+                )
+        track_change("email", db_lead.email, next_email)
+        db_lead.email = next_email
+
+    if "title" in update_data:
+        next_value = (payload.title or "").strip() or None
+        track_change("title", db_lead.title, next_value)
+        db_lead.title = next_value
+
+    if "phone" in update_data:
+        next_value = (payload.phone or "").strip() or None
+        track_change("phone", db_lead.phone, next_value)
+        db_lead.phone = next_value
+
+    if "linkedin_url" in update_data:
+        next_value = (payload.linkedin_url or "").strip() or None
+        track_change("linkedin_url", db_lead.linkedin_url, next_value)
+        db_lead.linkedin_url = next_value
+
+    if "status" in update_data and payload.status is not None:
+        next_status = _validate_lead_status(payload.status)
+        current_status = db_lead.status.value if hasattr(db_lead.status, "value") else str(db_lead.status)
+        track_change("status", current_status, next_status.value)
+        db_lead.status = next_status
+
+    if "segment" in update_data:
+        next_value = (payload.segment or "").strip() or None
+        track_change("segment", db_lead.segment, next_value)
+        db_lead.segment = next_value
+
+    if "tags" in update_data:
+        unique_tags = sorted({str(item).strip() for item in (payload.tags or []) if str(item).strip()})
+        track_change("tags", db_lead.tags or [], unique_tags)
+        db_lead.tags = unique_tags
+
+    company = db_lead.company
+    if any(
+        key in update_data
+        for key in ("company_name", "company_domain", "company_industry", "company_location")
+    ):
+        if company is None:
+            fallback_name = (payload.company_name or "Unknown").strip() or "Unknown"
+            company = DBCompany(name=fallback_name)
+            db.add(company)
+            db.flush()
+            db_lead.company_id = company.id
+
+        if "company_name" in update_data:
+            next_name = (payload.company_name or "").strip()
+            if not next_name:
+                raise HTTPException(status_code=HTTP_422_STATUS, detail="company_name cannot be empty.")
+            track_change("company_name", company.name, next_name)
+            company.name = next_name
+        if "company_domain" in update_data:
+            next_domain = (payload.company_domain or "").strip() or None
+            track_change("company_domain", company.domain, next_domain)
+            company.domain = next_domain
+        if "company_industry" in update_data:
+            next_industry = (payload.company_industry or "").strip() or None
+            track_change("company_industry", company.industry, next_industry)
+            company.industry = next_industry
+        if "company_location" in update_data:
+            next_location = (payload.company_location or "").strip() or None
+            track_change("company_location", company.location, next_location)
+            company.location = next_location
+
+    try:
+        db.commit()
+        db.refresh(db_lead)
+    except SQLAlchemyError as exc:
+        db.rollback()
+        logger.exception("Failed to update lead.", extra={"error": str(exc), "lead_id": db_lead.id})
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update lead.",
+        ) from exc
+
+    return _db_to_lead(db_lead), changes
+
+
 def _delete_lead_payload(db: Session, lead_id: str) -> dict[str, Any]:
     lead = db.query(DBLead).filter(DBLead.id == lead_id).first()
     if not lead:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lead not found.")
 
+    db.query(DBTask).filter(DBTask.lead_id == lead_id).delete(synchronize_session=False)
+    db.query(DBProject).filter(DBProject.lead_id == lead_id).delete(synchronize_session=False)
+    db.query(DBInteraction).filter(DBInteraction.lead_id == lead_id).delete(synchronize_session=False)
+    db.query(DBOpportunity).filter(DBOpportunity.lead_id == lead_id).delete(synchronize_session=False)
     db.delete(lead)
     try:
         db.commit()
@@ -1374,14 +2346,44 @@ def _bulk_delete_leads_payload(db: Session, lead_ids: list[str]) -> dict[str, An
 
 
 def _create_task_payload(db: Session, payload: AdminTaskCreateRequest) -> dict[str, Any]:
+    project_id = (payload.project_id or "").strip() or None
+    project: DBProject | None = None
+    if project_id:
+        project = db.query(DBProject).filter(DBProject.id == project_id).first()
+        if not project:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found.")
+
+    now = datetime.now()
     task = DBTask(
         id=str(uuid.uuid4()),
         title=payload.title.strip(),
+        description=(payload.description or "").strip() or None,
         status=_coerce_task_status(payload.status),
         priority=_coerce_task_priority(payload.priority),
         due_date=_parse_datetime_field(payload.due_date, "due_date"),
         assigned_to=(payload.assigned_to or "You").strip(),
         lead_id=payload.lead_id,
+        project_id=project_id,
+        project_name=(payload.project_name or (project.name if project else "")).strip() or None,
+        channel=_coerce_task_channel(payload.channel),
+        sequence_step=int(payload.sequence_step or 1),
+        source=_coerce_task_source(payload.source),
+        rule_id=(payload.rule_id or "").strip() or None,
+        score_snapshot_json=payload.score_snapshot or {},
+        subtasks_json=_normalize_task_subtasks_payload(payload.subtasks),
+        comments_json=[],
+        attachments_json=_normalize_task_attachments_payload(payload.attachments),
+        timeline_json=[],
+        created_at=now,
+        updated_at=now,
+    )
+    _append_task_timeline_entry(
+        task,
+        event_type="task_created",
+        message="Tache creee.",
+        actor="system",
+        metadata={"status": task.status, "priority": task.priority},
+        created_at=now,
     )
     db.add(task)
     try:
@@ -1397,6 +2399,23 @@ def _create_task_payload(db: Session, payload: AdminTaskCreateRequest) -> dict[s
     return _serialize_task(task)
 
 
+def _get_task_payload(db: Session, task_id: str) -> dict[str, Any]:
+    task = db.query(DBTask).filter(DBTask.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found.")
+
+    lead = db.query(DBLead).filter(DBLead.id == task.lead_id).first() if task.lead_id else None
+    project = db.query(DBProject).filter(DBProject.id == task.project_id).first() if task.project_id else None
+    if project is None and task.lead_id:
+        project = (
+            db.query(DBProject)
+            .filter(DBProject.lead_id == task.lead_id)
+            .order_by(DBProject.updated_at.desc(), DBProject.created_at.desc())
+            .first()
+        )
+    return _serialize_task(task, lead=lead, project=project)
+
+
 def _update_task_payload(
     db: Session,
     task_id: str,
@@ -1406,19 +2425,216 @@ def _update_task_payload(
     if not task:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found.")
 
+    now = datetime.now()
     update_data = payload.model_dump(exclude_unset=True)
     if "title" in update_data and payload.title is not None:
-        task.title = payload.title.strip()
+        next_title = payload.title.strip()
+        if next_title != task.title:
+            _append_task_timeline_entry(
+                task,
+                event_type="task_updated",
+                message=f"Titre mis a jour: '{task.title}' -> '{next_title}'.",
+                actor="system",
+                created_at=now,
+            )
+            task.title = next_title
+    if "description" in update_data:
+        next_description = (payload.description or "").strip() or None
+        if next_description != task.description:
+            _append_task_timeline_entry(
+                task,
+                event_type="task_updated",
+                message="Description mise a jour.",
+                actor="system",
+                created_at=now,
+            )
+            task.description = next_description
     if "status" in update_data:
-        task.status = _coerce_task_status(payload.status)
+        next_status = _coerce_task_status(payload.status)
+        if next_status != task.status:
+            previous_status = task.status
+            task.status = next_status
+            _append_task_timeline_entry(
+                task,
+                event_type="status_changed",
+                message=f"Statut: {previous_status} -> {next_status}.",
+                actor="system",
+                metadata={"from": previous_status, "to": next_status},
+                created_at=now,
+            )
+            if next_status == "Done":
+                task.closed_at = now
+            elif previous_status == "Done":
+                task.closed_at = None
     if "priority" in update_data:
-        task.priority = _coerce_task_priority(payload.priority)
+        next_priority = _coerce_task_priority(payload.priority)
+        if next_priority != task.priority:
+            previous_priority = task.priority
+            task.priority = next_priority
+            _append_task_timeline_entry(
+                task,
+                event_type="priority_changed",
+                message=f"Priorite: {previous_priority} -> {next_priority}.",
+                actor="system",
+                metadata={"from": previous_priority, "to": next_priority},
+                created_at=now,
+            )
     if "due_date" in update_data:
-        task.due_date = _parse_datetime_field(payload.due_date, "due_date")
+        next_due_date = _parse_datetime_field(payload.due_date, "due_date")
+        if next_due_date != task.due_date:
+            task.due_date = next_due_date
+            _append_task_timeline_entry(
+                task,
+                event_type="task_updated",
+                message="Echeance mise a jour.",
+                actor="system",
+                created_at=now,
+            )
     if "assigned_to" in update_data:
-        task.assigned_to = (payload.assigned_to or "You").strip()
+        next_assignee = (payload.assigned_to or "You").strip()
+        if next_assignee != task.assigned_to:
+            task.assigned_to = next_assignee
+            _append_task_timeline_entry(
+                task,
+                event_type="assignee_changed",
+                message=f"Tache assignee a {next_assignee}.",
+                actor="system",
+                metadata={"assigned_to": next_assignee},
+                created_at=now,
+            )
     if "lead_id" in update_data:
-        task.lead_id = payload.lead_id
+        if payload.lead_id != task.lead_id:
+            task.lead_id = payload.lead_id
+            _append_task_timeline_entry(
+                task,
+                event_type="lead_linked",
+                message=f"Lead lie: {task.lead_id or 'aucun'}.",
+                actor="system",
+                metadata={"lead_id": task.lead_id},
+                created_at=now,
+            )
+    if "project_id" in update_data:
+        project_id = (payload.project_id or "").strip() or None
+        project: DBProject | None = None
+        if project_id:
+            project = db.query(DBProject).filter(DBProject.id == project_id).first()
+            if not project:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found.")
+        if project_id != task.project_id:
+            task.project_id = project_id
+            if project:
+                task.project_name = project.name
+            _append_task_timeline_entry(
+                task,
+                event_type="project_linked",
+                message=f"Projet lie: {(project.name if project else project_id) or 'aucun'}.",
+                actor="system",
+                metadata={"project_id": project_id},
+                created_at=now,
+            )
+    if "project_name" in update_data:
+        next_project_name = (payload.project_name or "").strip() or None
+        if next_project_name != task.project_name:
+            task.project_name = next_project_name
+            _append_task_timeline_entry(
+                task,
+                event_type="task_updated",
+                message="Nom de projet mis a jour.",
+                actor="system",
+                created_at=now,
+            )
+    if "channel" in update_data:
+        next_channel = _coerce_task_channel(payload.channel)
+        if next_channel != task.channel:
+            task.channel = next_channel
+            _append_task_timeline_entry(
+                task,
+                event_type="channel_changed",
+                message=f"Canal: {next_channel}.",
+                actor="system",
+                metadata={"channel": next_channel},
+                created_at=now,
+            )
+    if "sequence_step" in update_data:
+        next_step = int(payload.sequence_step or 1)
+        if next_step != int(task.sequence_step or 1):
+            task.sequence_step = next_step
+            _append_task_timeline_entry(
+                task,
+                event_type="task_updated",
+                message=f"Etape de sequence: {next_step}.",
+                actor="system",
+                created_at=now,
+            )
+    if "source" in update_data:
+        next_source = _coerce_task_source(payload.source)
+        if next_source != task.source:
+            task.source = next_source
+            _append_task_timeline_entry(
+                task,
+                event_type="task_updated",
+                message=f"Source: {next_source}.",
+                actor="system",
+                created_at=now,
+            )
+    if "rule_id" in update_data:
+        next_rule_id = (payload.rule_id or "").strip() or None
+        if next_rule_id != task.rule_id:
+            task.rule_id = next_rule_id
+            _append_task_timeline_entry(
+                task,
+                event_type="task_updated",
+                message="Regle liee mise a jour.",
+                actor="system",
+                created_at=now,
+            )
+    if "score_snapshot" in update_data:
+        task.score_snapshot_json = payload.score_snapshot or {}
+    if "subtasks" in update_data:
+        previous_subtasks = _normalize_task_subtasks_payload(list(task.subtasks_json or []))
+        next_subtasks = _normalize_task_subtasks_payload(payload.subtasks)
+        if previous_subtasks != next_subtasks:
+            task.subtasks_json = next_subtasks
+            done_count = len([item for item in next_subtasks if bool(item.get("done"))])
+            _append_task_timeline_entry(
+                task,
+                event_type="subtasks_updated",
+                message=f"Checklist mise a jour ({done_count}/{len(next_subtasks)}).",
+                actor="system",
+                metadata={"done": done_count, "total": len(next_subtasks)},
+                created_at=now,
+            )
+    if "comments" in update_data:
+        previous_comments = _normalize_task_comments_payload(list(task.comments_json or []))
+        next_comments = _normalize_task_comments_payload(payload.comments)
+        previous_ids = {str(item.get("id")) for item in previous_comments}
+        new_comments = [item for item in next_comments if str(item.get("id")) not in previous_ids]
+        if previous_comments != next_comments:
+            task.comments_json = next_comments
+            for comment in new_comments:
+                _append_task_timeline_entry(
+                    task,
+                    event_type="comment_added",
+                    message="Nouveau commentaire ajoute.",
+                    actor=str(comment.get("author") or "Vous"),
+                    metadata={"comment_id": comment.get("id"), "mentions": comment.get("mentions") or []},
+                    created_at=now,
+                )
+    if "attachments" in update_data:
+        previous_attachments = _normalize_task_attachments_payload(list(task.attachments_json or []))
+        next_attachments = _normalize_task_attachments_payload(payload.attachments)
+        if previous_attachments != next_attachments:
+            task.attachments_json = next_attachments
+            _append_task_timeline_entry(
+                task,
+                event_type="attachments_updated",
+                message=f"Pieces jointes mises a jour ({len(next_attachments)}).",
+                actor="system",
+                metadata={"total": len(next_attachments)},
+                created_at=now,
+            )
+
+    task.updated_at = now
 
     try:
         db.commit()
@@ -1431,6 +2647,96 @@ def _update_task_payload(
             detail="Failed to update task.",
         ) from exc
     return _serialize_task(task)
+
+
+def _add_task_comment_payload(
+    db: Session,
+    task_id: str,
+    payload: AdminTaskCommentCreateRequest,
+) -> dict[str, Any]:
+    task = db.query(DBTask).filter(DBTask.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found.")
+
+    now = datetime.now()
+    comment = {
+        "id": str(uuid.uuid4()),
+        "body": payload.body.strip(),
+        "author": (payload.author or "Vous").strip() or "Vous",
+        "mentions": [str(item).strip() for item in payload.mentions if str(item).strip()],
+        "created_at": now.isoformat(),
+    }
+    comments = _normalize_task_comments_payload(list(task.comments_json or []))
+    comments.append(comment)
+    task.comments_json = comments
+    task.updated_at = now
+    _append_task_timeline_entry(
+        task,
+        event_type="comment_added",
+        message="Nouveau commentaire ajoute.",
+        actor=comment["author"],
+        metadata={"comment_id": comment["id"], "mentions": comment["mentions"]},
+        created_at=now,
+    )
+
+    try:
+        db.commit()
+        db.refresh(task)
+    except SQLAlchemyError as exc:
+        db.rollback()
+        logger.exception("Failed to add task comment.", extra={"error": str(exc), "task_id": task_id})
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to add task comment.",
+        ) from exc
+    return _get_task_payload(db, task_id)
+
+
+def _close_task_payload(
+    db: Session,
+    task_id: str,
+    payload: AdminTaskCloseRequest | None = None,
+) -> dict[str, Any]:
+    task = db.query(DBTask).filter(DBTask.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found.")
+
+    now = datetime.now()
+    task.status = "Done"
+    task.closed_at = now
+    task.updated_at = now
+    _append_task_timeline_entry(
+        task,
+        event_type="task_closed",
+        message="Tache fermee.",
+        actor="system",
+        created_at=now,
+    )
+    note = (payload.note.strip() if payload and payload.note else "")
+    if note:
+        comments = _normalize_task_comments_payload(list(task.comments_json or []))
+        comments.append(
+            {
+                "id": str(uuid.uuid4()),
+                "body": note,
+                "author": "Vous",
+                "mentions": [],
+                "created_at": now.isoformat(),
+            }
+        )
+        task.comments_json = comments
+
+    try:
+        db.commit()
+        db.refresh(task)
+    except SQLAlchemyError as exc:
+        db.rollback()
+        logger.exception("Failed to close task.", extra={"error": str(exc), "task_id": task_id})
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to close task.",
+        ) from exc
+    return _get_task_payload(db, task_id)
 
 
 def _delete_task_payload(db: Session, task_id: str) -> dict[str, Any]:
@@ -1451,6 +2757,876 @@ def _delete_task_payload(db: Session, task_id: str) -> dict[str, Any]:
     return {"deleted": True, "id": task_id}
 
 
+def _build_lead_history_payload(
+    db: Session,
+    *,
+    lead_id: str,
+    window: str = "30d",
+) -> dict[str, Any]:
+    db_lead = db.query(DBLead).filter(DBLead.id == lead_id).first()
+    if not db_lead:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lead not found.")
+
+    window_label, window_days = _parse_window_days(window, default_days=30)
+    now = datetime.now()
+    start_at = now - timedelta(days=window_days - 1)
+
+    items: list[dict[str, Any]] = []
+    if db_lead.created_at and db_lead.created_at >= start_at:
+        items.append(
+            {
+                "id": f"lead-created-{db_lead.id}",
+                "event_type": "lead_created",
+                "timestamp": db_lead.created_at.isoformat(),
+                "title": "Lead cree",
+                "description": f"{db_lead.first_name or ''} {db_lead.last_name or ''}".strip() or db_lead.email,
+                "lead_id": db_lead.id,
+            }
+        )
+    if db_lead.last_scored_at and db_lead.last_scored_at >= start_at:
+        snapshot = _lead_score_snapshot(db_lead)
+        items.append(
+            {
+                "id": f"lead-scored-{db_lead.id}",
+                "event_type": "lead_scored",
+                "timestamp": db_lead.last_scored_at.isoformat(),
+                "title": "Lead rescored",
+                "description": f"Score total {snapshot['total_score']} ({snapshot['tier']}, {snapshot['heat_status']})",
+                "lead_id": db_lead.id,
+                "score_snapshot": snapshot,
+            }
+        )
+    if db_lead.updated_at and db_lead.updated_at >= start_at:
+        items.append(
+            {
+                "id": f"lead-status-{db_lead.id}",
+                "event_type": "lead_status",
+                "timestamp": db_lead.updated_at.isoformat(),
+                "title": "Mise a jour du lead",
+                "description": f"Statut courant: {db_lead.status.value if hasattr(db_lead.status, 'value') else db_lead.status}",
+                "lead_id": db_lead.id,
+            }
+        )
+
+    task_rows = (
+        db.query(DBTask)
+        .filter(DBTask.lead_id == lead_id, DBTask.created_at >= start_at)
+        .order_by(DBTask.created_at.desc())
+        .all()
+    )
+    for task in task_rows:
+        items.append(
+            {
+                "id": f"task-{task.id}",
+                "event_type": "task_created",
+                "timestamp": task.created_at.isoformat() if task.created_at else now.isoformat(),
+                "title": task.title,
+                "description": f"{task.channel or 'email'} | {task.status} | {task.priority}",
+                "lead_id": lead_id,
+                "task_id": task.id,
+                "channel": task.channel or "email",
+                "source": task.source or "manual",
+                "status": task.status,
+            }
+        )
+
+    interaction_rows = (
+        db.query(DBInteraction)
+        .filter(DBInteraction.lead_id == lead_id, DBInteraction.timestamp >= start_at)
+        .order_by(DBInteraction.timestamp.desc())
+        .all()
+    )
+    for interaction in interaction_rows:
+        interaction_type = interaction.type.value if hasattr(interaction.type, "value") else str(interaction.type)
+        items.append(
+            {
+                "id": f"interaction-{interaction.id}",
+                "event_type": "interaction",
+                "timestamp": interaction.timestamp.isoformat() if interaction.timestamp else now.isoformat(),
+                "title": interaction_type,
+                "description": "Interaction enregistree",
+                "lead_id": lead_id,
+                "interaction_id": interaction.id,
+                "interaction_type": interaction_type,
+                "details": interaction.details or {},
+            }
+        )
+
+    project_rows = (
+        db.query(DBProject)
+        .filter(DBProject.lead_id == lead_id, DBProject.created_at >= start_at)
+        .order_by(DBProject.created_at.desc())
+        .all()
+    )
+    for project in project_rows:
+        items.append(
+            {
+                "id": f"project-{project.id}",
+                "event_type": "project_created",
+                "timestamp": project.created_at.isoformat() if project.created_at else now.isoformat(),
+                "title": project.name,
+                "description": f"Projet ({project.status})",
+                "lead_id": lead_id,
+                "project_id": project.id,
+            }
+        )
+
+    opportunity_rows = (
+        db.query(DBOpportunity)
+        .filter(DBOpportunity.lead_id == lead_id, DBOpportunity.created_at >= start_at)
+        .order_by(DBOpportunity.created_at.desc())
+        .all()
+    )
+    for opportunity in opportunity_rows:
+        items.append(
+            {
+                "id": f"opportunity-{opportunity.id}",
+                "event_type": "opportunity",
+                "timestamp": opportunity.created_at.isoformat() if opportunity.created_at else now.isoformat(),
+                "title": opportunity.name,
+                "description": f"{opportunity.stage} | {opportunity.status}",
+                "lead_id": lead_id,
+                "opportunity_id": opportunity.id,
+                "details": _serialize_opportunity(opportunity),
+            }
+        )
+
+    audit_rows = (
+        db.query(DBAuditLog)
+        .filter(
+            DBAuditLog.entity_type == "lead",
+            DBAuditLog.entity_id == lead_id,
+            DBAuditLog.created_at >= start_at,
+        )
+        .order_by(DBAuditLog.created_at.desc())
+        .all()
+    )
+    audit_title_map = {
+        "lead_updated": "Infos lead modifiees",
+        "lead_notes_updated": "Notes mises a jour",
+        "lead_opportunity_created": "Opportunite creee",
+        "lead_opportunity_updated": "Opportunite mise a jour",
+        "lead_added_to_campaign": "Lead ajoute a une campagne",
+    }
+    for audit in audit_rows:
+        metadata = audit.metadata_json or {}
+        description = ""
+        changes = metadata.get("changes")
+        if isinstance(changes, dict) and changes:
+            preview: list[str] = []
+            for index, (field_name, diff_payload) in enumerate(changes.items()):
+                if index >= 4:
+                    break
+                if isinstance(diff_payload, dict):
+                    previous = diff_payload.get("from")
+                    next_value = diff_payload.get("to")
+                    preview.append(f"{field_name}: {previous} -> {next_value}")
+            description = "; ".join(preview)
+        elif metadata:
+            description = json.dumps(metadata, ensure_ascii=True)[:240]
+        items.append(
+            {
+                "id": f"audit-{audit.id}",
+                "event_type": audit.action,
+                "timestamp": audit.created_at.isoformat() if audit.created_at else now.isoformat(),
+                "title": audit_title_map.get(audit.action, audit.action.replace("_", " ")),
+                "description": description or None,
+                "lead_id": lead_id,
+                "actor": audit.actor,
+                "metadata": metadata,
+            }
+        )
+
+    items.sort(key=lambda item: item.get("timestamp") or "", reverse=True)
+    return {
+        "lead_id": lead_id,
+        "window": window_label,
+        "from": start_at.isoformat(),
+        "to": now.isoformat(),
+        "total": len(items),
+        "items": items,
+    }
+
+
+def _get_lead_or_404(db: Session, lead_id: str) -> DBLead:
+    db_lead = db.query(DBLead).filter(DBLead.id == lead_id).first()
+    if not db_lead:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lead not found.")
+    return db_lead
+
+
+def _list_lead_interactions_payload(db: Session, *, lead_id: str) -> list[dict[str, Any]]:
+    _get_lead_or_404(db, lead_id)
+    rows = (
+        db.query(DBInteraction)
+        .filter(DBInteraction.lead_id == lead_id)
+        .order_by(DBInteraction.timestamp.desc())
+        .all()
+    )
+    return [_serialize_interaction(row) for row in rows]
+
+
+def _list_lead_opportunities_payload(db: Session, *, lead_id: str) -> list[dict[str, Any]]:
+    _get_lead_or_404(db, lead_id)
+    rows = (
+        db.query(DBOpportunity)
+        .filter(DBOpportunity.lead_id == lead_id)
+        .order_by(DBOpportunity.updated_at.desc(), DBOpportunity.created_at.desc())
+        .all()
+    )
+    return [_serialize_opportunity(row) for row in rows]
+
+
+def _create_lead_opportunity_payload(
+    db: Session,
+    *,
+    lead_id: str,
+    payload: AdminLeadOpportunityCreateRequest,
+) -> dict[str, Any]:
+    _get_lead_or_404(db, lead_id)
+    stage = _coerce_opportunity_stage(payload.stage)
+    inferred_status = "open"
+    if stage == "won":
+        inferred_status = "won"
+    elif stage == "lost":
+        inferred_status = "lost"
+    status_value = _coerce_opportunity_status(payload.status or inferred_status)
+    row = DBOpportunity(
+        id=str(uuid.uuid4()),
+        lead_id=lead_id,
+        name=payload.name.strip(),
+        stage=stage,
+        status=status_value,
+        amount=float(payload.amount) if payload.amount is not None else None,
+        probability=int(payload.probability or 10),
+        assigned_to="Vous",
+        expected_close_date=_parse_datetime_field(payload.expected_close_date, "expected_close_date"),
+        details_json=payload.details or {},
+    )
+    db.add(row)
+    try:
+        db.commit()
+        db.refresh(row)
+    except SQLAlchemyError as exc:
+        db.rollback()
+        logger.exception("Failed to create lead opportunity.", extra={"error": str(exc), "lead_id": lead_id})
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to create opportunity.",
+        ) from exc
+    return _serialize_opportunity(row)
+
+
+def _update_lead_opportunity_payload(
+    db: Session,
+    *,
+    lead_id: str,
+    opportunity_id: str,
+    payload: AdminLeadOpportunityUpdateRequest,
+) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
+    row = (
+        db.query(DBOpportunity)
+        .filter(DBOpportunity.id == opportunity_id, DBOpportunity.lead_id == lead_id)
+        .first()
+    )
+    if not row:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Opportunity not found.")
+
+    update_data = payload.model_dump(exclude_unset=True)
+    changes: dict[str, dict[str, Any]] = {}
+
+    def track_change(field: str, before: Any, after: Any) -> None:
+        if before == after:
+            return
+        changes[field] = {"from": before, "to": after}
+
+    if "name" in update_data and payload.name is not None:
+        next_name = payload.name.strip()
+        track_change("name", row.name, next_name)
+        row.name = next_name
+    if "stage" in update_data:
+        next_stage = _coerce_opportunity_stage(payload.stage)
+        track_change("stage", row.stage, next_stage)
+        row.stage = next_stage
+    if "status" in update_data:
+        next_status = _coerce_opportunity_status(payload.status)
+        track_change("status", row.status, next_status)
+        row.status = next_status
+    if "amount" in update_data:
+        next_amount = float(payload.amount) if payload.amount is not None else None
+        track_change("amount", row.amount, next_amount)
+        row.amount = next_amount
+    if "probability" in update_data:
+        next_probability = int(payload.probability or 0)
+        track_change("probability", row.probability, next_probability)
+        row.probability = next_probability
+    if "expected_close_date" in update_data:
+        next_close_date = _parse_datetime_field(payload.expected_close_date, "expected_close_date")
+        previous_close_date = row.expected_close_date.isoformat() if row.expected_close_date else None
+        next_close_date_iso = next_close_date.isoformat() if next_close_date else None
+        track_change("expected_close_date", previous_close_date, next_close_date_iso)
+        row.expected_close_date = next_close_date
+    if "details" in update_data:
+        next_details = payload.details or {}
+        track_change("details", row.details_json or {}, next_details)
+        row.details_json = next_details
+
+    try:
+        db.commit()
+        db.refresh(row)
+    except SQLAlchemyError as exc:
+        db.rollback()
+        logger.exception(
+            "Failed to update lead opportunity.",
+            extra={"error": str(exc), "lead_id": lead_id, "opportunity_id": opportunity_id},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update opportunity.",
+        ) from exc
+    return _serialize_opportunity(row), changes
+
+
+def _serialize_opportunity_prospect_summary(lead: DBLead | None) -> dict[str, Any] | None:
+    if lead is None:
+        return None
+    full_name = f"{lead.first_name or ''} {lead.last_name or ''}".strip() or lead.email
+    return {
+        "id": lead.id,
+        "name": full_name,
+        "email": lead.email,
+        "company_name": lead.company.name if lead.company else None,
+    }
+
+
+def _serialize_opportunity_board_item(
+    opportunity: DBOpportunity,
+    *,
+    lead: DBLead | None = None,
+) -> dict[str, Any]:
+    close_date = opportunity.expected_close_date.isoformat() if opportunity.expected_close_date else None
+    prospect_name = None
+    if lead is not None:
+        prospect_name = f"{lead.first_name or ''} {lead.last_name or ''}".strip() or lead.email
+    if not prospect_name:
+        prospect_name = opportunity.name
+    return {
+        "id": opportunity.id,
+        "prospect_id": opportunity.lead_id,
+        "prospect_name": prospect_name,
+        "amount": float(opportunity.amount or 0.0),
+        "stage": _coerce_pipeline_opportunity_stage(opportunity.stage),
+        "probability": int(opportunity.probability or 0),
+        "assigned_to": _coerce_assigned_to(opportunity.assigned_to),
+        "close_date": close_date,
+        "created_at": opportunity.created_at.isoformat() if opportunity.created_at else None,
+        "updated_at": opportunity.updated_at.isoformat() if opportunity.updated_at else None,
+        "is_overdue": bool(opportunity.expected_close_date and opportunity.expected_close_date < datetime.utcnow()),
+        "prospect": _serialize_opportunity_prospect_summary(lead),
+    }
+
+
+def _parse_query_datetime(raw_value: str | None, field_name: str) -> datetime | None:
+    if raw_value is None:
+        return None
+    return _parse_datetime_field(raw_value, field_name)
+
+
+def _parse_query_datetime_end(raw_value: str | None, field_name: str) -> datetime | None:
+    parsed = _parse_query_datetime(raw_value, field_name)
+    if parsed is None:
+        return None
+    cleaned = raw_value.strip() if raw_value else ""
+    if len(cleaned) == 10 and "T" not in cleaned:
+        return parsed + timedelta(days=1) - timedelta(microseconds=1)
+    return parsed
+
+
+def _build_opportunities_query(
+    db: Session,
+    *,
+    search: str | None = None,
+    stage_filter: str | None = None,
+    assigned_to_filter: str | None = None,
+    amount_min: float | None = None,
+    amount_max: float | None = None,
+    date_field: str = "close",
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
+):
+    query = (
+        db.query(DBOpportunity, DBLead)
+        .join(DBLead, DBOpportunity.lead_id == DBLead.id)
+    )
+
+    if search and search.strip():
+        pattern = f"%{search.strip()}%"
+        query = query.filter(
+            or_(
+                DBLead.first_name.ilike(pattern),
+                DBLead.last_name.ilike(pattern),
+                DBLead.email.ilike(pattern),
+                DBOpportunity.name.ilike(pattern),
+                DBOpportunity.assigned_to.ilike(pattern),
+            )
+        )
+
+    if stage_filter and stage_filter.strip():
+        target_stage = _coerce_pipeline_opportunity_stage(stage_filter)
+        stage_candidates = {
+            "Prospect": {"prospect", "qualification"},
+            "Qualified": {"qualified", "discovery"},
+            "Proposed": {"proposed", "proposal", "negotiation"},
+            "Won": {"won"},
+            "Lost": {"lost"},
+        }
+        allowed_values = stage_candidates.get(target_stage, {target_stage.lower()})
+        query = query.filter(func.lower(DBOpportunity.stage).in_(allowed_values))
+
+    if assigned_to_filter and assigned_to_filter.strip():
+        query = query.filter(DBOpportunity.assigned_to == assigned_to_filter.strip())
+
+    if amount_min is not None:
+        query = query.filter(DBOpportunity.amount >= float(amount_min))
+    if amount_max is not None:
+        query = query.filter(DBOpportunity.amount <= float(amount_max))
+
+    date_column = DBOpportunity.expected_close_date if date_field == "close" else DBOpportunity.created_at
+    if date_from is not None:
+        query = query.filter(date_column >= date_from)
+    if date_to is not None:
+        query = query.filter(date_column <= date_to)
+
+    return query
+
+
+def _list_opportunities_payload(
+    db: Session,
+    *,
+    page: int,
+    page_size: int,
+    search: str | None = None,
+    stage_filter: str | None = None,
+    assigned_to_filter: str | None = None,
+    amount_min: float | None = None,
+    amount_max: float | None = None,
+    date_field: str = "close",
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
+    sort_by: str = "created_at",
+    sort_desc: bool = True,
+) -> dict[str, Any]:
+    query = _build_opportunities_query(
+        db,
+        search=search,
+        stage_filter=stage_filter,
+        assigned_to_filter=assigned_to_filter,
+        amount_min=amount_min,
+        amount_max=amount_max,
+        date_field=date_field,
+        date_from=date_from,
+        date_to=date_to,
+    )
+
+    total = query.count()
+
+    sort_map = {
+        "created_at": DBOpportunity.created_at,
+        "updated_at": DBOpportunity.updated_at,
+        "amount": DBOpportunity.amount,
+        "probability": DBOpportunity.probability,
+        "close_date": DBOpportunity.expected_close_date,
+        "stage": DBOpportunity.stage,
+        "assigned_to": DBOpportunity.assigned_to,
+        "prospect_name": DBLead.first_name,
+    }
+    sort_column = sort_map.get(sort_by, DBOpportunity.created_at)
+    if sort_desc:
+        query = query.order_by(sort_column.desc(), DBOpportunity.id.desc())
+    else:
+        query = query.order_by(sort_column.asc(), DBOpportunity.id.asc())
+
+    offset = (page - 1) * page_size
+    rows = query.offset(offset).limit(page_size).all()
+
+    return {
+        "page": page,
+        "page_size": page_size,
+        "total": total,
+        "items": [
+            _serialize_opportunity_board_item(opportunity, lead=lead)
+            for opportunity, lead in rows
+        ],
+    }
+
+
+def _build_opportunities_summary_payload(
+    db: Session,
+    *,
+    search: str | None = None,
+    stage_filter: str | None = None,
+    assigned_to_filter: str | None = None,
+    amount_min: float | None = None,
+    amount_max: float | None = None,
+    date_field: str = "close",
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
+) -> dict[str, Any]:
+    rows = _build_opportunities_query(
+        db,
+        search=search,
+        stage_filter=stage_filter,
+        assigned_to_filter=assigned_to_filter,
+        amount_min=amount_min,
+        amount_max=amount_max,
+        date_field=date_field,
+        date_from=date_from,
+        date_to=date_to,
+    ).all()
+
+    opportunities = [opportunity for opportunity, _ in rows]
+    total_count = len(opportunities)
+    total_amount = sum(float(opportunity.amount or 0.0) for opportunity in opportunities)
+    average_deal_size = (total_amount / total_count) if total_count > 0 else 0.0
+
+    won_count = sum(
+        1
+        for opportunity in opportunities
+        if _coerce_pipeline_opportunity_stage(opportunity.stage).lower() == "won"
+    )
+    lost_count = sum(
+        1
+        for opportunity in opportunities
+        if _coerce_pipeline_opportunity_stage(opportunity.stage).lower() == "lost"
+    )
+    closed_count = won_count + lost_count
+
+    win_rate = (won_count / closed_count * 100.0) if closed_count > 0 else 0.0
+    close_rate = (closed_count / total_count * 100.0) if total_count > 0 else 0.0
+
+    forecast_by_month: dict[str, dict[str, Any]] = {}
+    no_close_date_count = 0
+    for opportunity in opportunities:
+        amount_value = float(opportunity.amount or 0.0)
+        probability_value = max(0, min(100, int(opportunity.probability or 0)))
+        if opportunity.expected_close_date is None:
+            no_close_date_count += 1
+            continue
+        month_key = opportunity.expected_close_date.strftime("%Y-%m")
+        bucket = forecast_by_month.setdefault(
+            month_key,
+            {
+                "month": month_key,
+                "expected_revenue": 0.0,
+                "weighted_revenue": 0.0,
+                "count": 0,
+            },
+        )
+        bucket["expected_revenue"] += amount_value
+        bucket["weighted_revenue"] += amount_value * (probability_value / 100.0)
+        bucket["count"] += 1
+
+    forecast_monthly = [
+        {
+            "month": key,
+            "expected_revenue": round(float(value["expected_revenue"]), 2),
+            "weighted_revenue": round(float(value["weighted_revenue"]), 2),
+            "count": int(value["count"]),
+        }
+        for key, value in sorted(forecast_by_month.items(), key=lambda item: item[0])
+    ]
+
+    return {
+        "pipeline_value_total": round(total_amount, 2),
+        "win_rate_percent": round(win_rate, 2),
+        "avg_deal_size": round(average_deal_size, 2),
+        "close_rate_percent": round(close_rate, 2),
+        "forecast_monthly": forecast_monthly,
+        "without_close_date": no_close_date_count,
+        "total_count": total_count,
+        "closed_count": closed_count,
+        "won_count": won_count,
+        "lost_count": lost_count,
+    }
+
+
+def _create_opportunity_payload(
+    db: Session,
+    payload: AdminOpportunityCreateRequest,
+) -> dict[str, Any]:
+    lead = _get_lead_or_404(db, payload.prospect_id.strip())
+    stage_value = _coerce_pipeline_opportunity_stage(payload.stage)
+    status_value = _infer_opportunity_status_from_stage(stage_value)
+    opportunity_name = (payload.name or "").strip()
+    if not opportunity_name:
+        lead_name = f"{lead.first_name or ''} {lead.last_name or ''}".strip() or lead.email
+        opportunity_name = f"Opportunite - {lead_name}"
+
+    row = DBOpportunity(
+        id=str(uuid.uuid4()),
+        lead_id=lead.id,
+        name=opportunity_name,
+        stage=stage_value,
+        status=status_value,
+        amount=float(payload.amount),
+        probability=int(payload.probability),
+        assigned_to=_coerce_assigned_to(payload.assigned_to),
+        expected_close_date=_parse_datetime_field(payload.close_date, "close_date"),
+        details_json={},
+    )
+    db.add(row)
+    try:
+        db.commit()
+        db.refresh(row)
+    except SQLAlchemyError as exc:
+        db.rollback()
+        logger.exception("Failed to create opportunity.", extra={"error": str(exc), "lead_id": lead.id})
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to create opportunity.",
+        ) from exc
+    return _serialize_opportunity_board_item(row, lead=lead)
+
+
+def _update_opportunity_payload(
+    db: Session,
+    *,
+    opportunity_id: str,
+    payload: AdminOpportunityUpdateRequest,
+) -> dict[str, Any]:
+    row = db.query(DBOpportunity).filter(DBOpportunity.id == opportunity_id).first()
+    if not row:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Opportunity not found.")
+
+    update_data = payload.model_dump(exclude_unset=True)
+    if "prospect_id" in update_data and payload.prospect_id is not None:
+        lead = _get_lead_or_404(db, payload.prospect_id.strip())
+        row.lead_id = lead.id
+    if "name" in update_data and payload.name is not None:
+        row.name = payload.name.strip()
+    if "stage" in update_data and payload.stage is not None:
+        row.stage = _coerce_pipeline_opportunity_stage(payload.stage)
+        row.status = _infer_opportunity_status_from_stage(row.stage)
+    if "amount" in update_data:
+        row.amount = float(payload.amount) if payload.amount is not None else 0.0
+    if "probability" in update_data:
+        row.probability = int(payload.probability or 0)
+    if "close_date" in update_data:
+        row.expected_close_date = _parse_datetime_field(payload.close_date, "close_date")
+    if "assigned_to" in update_data:
+        row.assigned_to = _coerce_assigned_to(payload.assigned_to)
+
+    try:
+        db.commit()
+        db.refresh(row)
+    except SQLAlchemyError as exc:
+        db.rollback()
+        logger.exception(
+            "Failed to update opportunity.",
+            extra={"error": str(exc), "opportunity_id": opportunity_id},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update opportunity.",
+        ) from exc
+
+    lead = _get_lead_or_404(db, row.lead_id)
+    return _serialize_opportunity_board_item(row, lead=lead)
+
+
+def _delete_opportunity_payload(db: Session, *, opportunity_id: str) -> dict[str, Any]:
+    row = db.query(DBOpportunity).filter(DBOpportunity.id == opportunity_id).first()
+    if not row:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Opportunity not found.")
+    db.delete(row)
+    try:
+        db.commit()
+    except SQLAlchemyError as exc:
+        db.rollback()
+        logger.exception(
+            "Failed to delete opportunity.",
+            extra={"error": str(exc), "opportunity_id": opportunity_id},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to delete opportunity.",
+        ) from exc
+    return {"deleted": True, "id": opportunity_id}
+
+
+def _quick_create_opportunity_lead_payload(
+    db: Session,
+    payload: AdminOpportunityQuickLeadRequest,
+) -> dict[str, Any]:
+    existing = db.query(DBLead).filter(DBLead.email == str(payload.email)).first()
+    if existing:
+        return {"created": False, "lead": _serialize_opportunity_prospect_summary(existing)}
+
+    lead_payload = AdminLeadCreateRequest(
+        first_name=payload.first_name.strip(),
+        last_name=payload.last_name.strip(),
+        email=payload.email,
+        company_name=payload.company_name.strip(),
+        status="NEW",
+        segment="General",
+    )
+    created = _create_lead_payload(db, lead_payload)
+    created_lead = _get_lead_or_404(db, created["id"])
+    return {"created": True, "lead": _serialize_opportunity_prospect_summary(created_lead)}
+
+
+def _list_lead_notes_payload(db: Session, *, lead_id: str) -> dict[str, Any]:
+    db_lead = _get_lead_or_404(db, lead_id)
+    return {"items": _lead_notes_from_details(db_lead.details)}
+
+
+def _save_lead_notes_payload(
+    db: Session,
+    *,
+    lead_id: str,
+    payload: AdminLeadNotesUpdateRequest,
+    actor: str,
+) -> tuple[dict[str, Any], dict[str, int]]:
+    db_lead = _get_lead_or_404(db, lead_id)
+    existing_notes = _lead_notes_from_details(db_lead.details)
+    existing_by_id = {str(item.get("id")): item for item in existing_notes if item.get("id")}
+    now_iso = datetime.utcnow().isoformat()
+
+    next_notes: list[dict[str, Any]] = []
+    for item in payload.items:
+        note_id = (item.id or "").strip() or str(uuid.uuid4())
+        previous = existing_by_id.get(note_id, {})
+        content = item.content.strip()
+        if not content:
+            continue
+        created_at = (
+            str(previous.get("created_at"))
+            if previous.get("created_at")
+            else str(item.created_at or now_iso)
+        )
+        note_payload = {
+            "id": note_id,
+            "content": content,
+            "author": (item.author or str(previous.get("author") or actor)).strip() or actor,
+            "created_at": created_at,
+            "updated_at": now_iso,
+        }
+        next_notes.append(note_payload)
+
+    details_payload = dict(db_lead.details or {})
+    details_payload["notes"] = next_notes
+    db_lead.details = details_payload
+
+    try:
+        db.commit()
+        db.refresh(db_lead)
+    except SQLAlchemyError as exc:
+        db.rollback()
+        logger.exception("Failed to save lead notes.", extra={"error": str(exc), "lead_id": lead_id})
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to save lead notes.",
+        ) from exc
+
+    new_ids = {item["id"] for item in next_notes}
+    old_ids = {item["id"] for item in existing_notes}
+    stats = {
+        "created": len(new_ids - old_ids),
+        "updated": len(new_ids & old_ids),
+        "deleted": len(old_ids - new_ids),
+        "total": len(next_notes),
+    }
+    return {"items": next_notes}, stats
+
+
+def _create_auto_tasks_for_lead_payload(
+    db: Session,
+    *,
+    lead_id: str,
+    payload: AdminLeadAutoTaskCreateRequest,
+) -> dict[str, Any]:
+    db_lead = db.query(DBLead).filter(DBLead.id == lead_id).first()
+    if not db_lead:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lead not found.")
+
+    mode = (payload.mode or "append").strip().lower()
+    if mode not in {"append", "replace"}:
+        raise HTTPException(
+            status_code=HTTP_422_STATUS,
+            detail=f"Unsupported mode: {payload.mode}",
+        )
+
+    channels = _normalize_task_channels(payload.channels)
+    plan = _build_communication_plan_payload(db_lead, channels=channels)
+    steps = list(plan.get("recommended_sequence") or [])
+
+    if mode == "replace" and not payload.dry_run:
+        db.query(DBTask).filter(
+            DBTask.lead_id == lead_id,
+            DBTask.source == "auto-rule",
+        ).delete(synchronize_session=False)
+
+    created_items: list[dict[str, Any]] = []
+    now = datetime.now()
+    for step in steps:
+        due_date = now + timedelta(days=int(step.get("day_offset") or 0))
+        task_payload = {
+            "id": str(uuid.uuid4()),
+            "title": str(step.get("title") or f"Suivi lead - {db_lead.email}"),
+            "status": "To Do",
+            "priority": _coerce_task_priority(str(step.get("priority") or "Medium")),
+            "due_date": due_date.isoformat(),
+            "assigned_to": (payload.assigned_to or "Vous").strip() or "Vous",
+            "lead_id": lead_id,
+            "channel": _coerce_task_channel(str(step.get("channel") or "email")),
+            "sequence_step": int(step.get("step") or 1),
+            "source": "auto-rule",
+            "rule_id": str(plan.get("rule", {}).get("id") or ""),
+            "related_score_snapshot": plan.get("score_snapshot") or {},
+        }
+        created_items.append(task_payload)
+
+        if payload.dry_run:
+            continue
+
+        db.add(
+            DBTask(
+                id=task_payload["id"],
+                title=task_payload["title"],
+                status=task_payload["status"],
+                priority=task_payload["priority"],
+                due_date=_parse_datetime_field(task_payload["due_date"], "due_date"),
+                assigned_to=task_payload["assigned_to"],
+                lead_id=lead_id,
+                channel=task_payload["channel"],
+                sequence_step=task_payload["sequence_step"],
+                source=task_payload["source"],
+                rule_id=task_payload["rule_id"] or None,
+                score_snapshot_json=task_payload["related_score_snapshot"],
+            )
+        )
+
+    if not payload.dry_run:
+        try:
+            db.commit()
+        except SQLAlchemyError as exc:
+            db.rollback()
+            logger.exception("Failed to auto-create communication tasks.", extra={"error": str(exc), "lead_id": lead_id})
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to create automatic communication tasks.",
+            ) from exc
+
+    return {
+        "lead_id": lead_id,
+        "mode": mode,
+        "dry_run": bool(payload.dry_run),
+        "rule": plan.get("rule") or {},
+        "created_count": len(created_items),
+        "items": created_items,
+    }
+
+
 def _create_project_payload(db: Session, payload: AdminProjectCreateRequest) -> dict[str, Any]:
     project = DBProject(
         id=str(uuid.uuid4()),
@@ -1458,6 +3634,12 @@ def _create_project_payload(db: Session, payload: AdminProjectCreateRequest) -> 
         description=payload.description.strip() if payload.description else None,
         status=_coerce_project_status(payload.status),
         lead_id=payload.lead_id,
+        progress_percent=_coerce_progress_percent(payload.progress_percent),
+        budget_total=_coerce_budget_value(payload.budget_total),
+        budget_spent=_coerce_budget_value(payload.budget_spent, default_zero=True),
+        team_json=_normalize_project_list_payload(payload.team, field_name="team"),
+        timeline_json=_normalize_project_list_payload(payload.timeline, field_name="timeline"),
+        deliverables_json=_normalize_project_list_payload(payload.deliverables, field_name="deliverable"),
         due_date=_parse_datetime_field(payload.due_date, "due_date"),
     )
     db.add(project)
@@ -1492,6 +3674,18 @@ def _update_project_payload(
         project.status = _coerce_project_status(payload.status)
     if "lead_id" in update_data:
         project.lead_id = payload.lead_id
+    if "progress_percent" in update_data:
+        project.progress_percent = _coerce_progress_percent(payload.progress_percent)
+    if "budget_total" in update_data:
+        project.budget_total = _coerce_budget_value(payload.budget_total)
+    if "budget_spent" in update_data:
+        project.budget_spent = _coerce_budget_value(payload.budget_spent, default_zero=True)
+    if "team" in update_data:
+        project.team_json = _normalize_project_list_payload(payload.team, field_name="team")
+    if "timeline" in update_data:
+        project.timeline_json = _normalize_project_list_payload(payload.timeline, field_name="timeline")
+    if "deliverables" in update_data:
+        project.deliverables_json = _normalize_project_list_payload(payload.deliverables, field_name="deliverable")
     if "due_date" in update_data:
         project.due_date = _parse_datetime_field(payload.due_date, "due_date")
 
@@ -1524,6 +3718,113 @@ def _delete_project_payload(db: Session, project_id: str) -> dict[str, Any]:
             detail="Failed to delete project.",
         ) from exc
     return {"deleted": True, "id": project_id}
+
+
+def _get_project_payload(db: Session, project_id: str) -> dict[str, Any]:
+    project = db.query(DBProject).filter(DBProject.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found.")
+    return _serialize_project(project)
+
+
+def _build_project_activity_payload(
+    db: Session,
+    *,
+    project_id: str,
+    limit: int = 40,
+) -> dict[str, Any]:
+    project = db.query(DBProject).filter(DBProject.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found.")
+
+    items: list[dict[str, Any]] = []
+    project_label = project.name or project_id
+
+    items.append(
+        {
+            "id": f"project-{project.id}",
+            "timestamp": project.created_at.isoformat() if project.created_at else datetime.now().isoformat(),
+            "actor": "system",
+            "action": "project_created",
+            "title": f"Projet cree: {project_label}",
+            "description": f"Statut initial: {project.status}",
+            "entity_type": "project",
+            "entity_id": project.id,
+            "metadata": {},
+        }
+    )
+    if project.updated_at and project.created_at and project.updated_at > project.created_at:
+        items.append(
+            {
+                "id": f"project-update-{project.id}",
+                "timestamp": project.updated_at.isoformat(),
+                "actor": "system",
+                "action": "project_updated",
+                "title": "Projet mis a jour",
+                "description": f"Derniere mise a jour du projet {project_label}",
+                "entity_type": "project",
+                "entity_id": project.id,
+                "metadata": {},
+            }
+        )
+
+    task_rows = (
+        db.query(DBTask)
+        .filter(DBTask.project_id == project_id)
+        .order_by(DBTask.created_at.desc())
+        .limit(max(1, min(limit, 200)))
+        .all()
+    )
+    for task in task_rows:
+        items.append(
+            {
+                "id": f"task-{task.id}",
+                "timestamp": task.created_at.isoformat() if task.created_at else datetime.now().isoformat(),
+                "actor": task.assigned_to or "team",
+                "action": "task_linked",
+                "title": task.title,
+                "description": f"{task.status} | {task.priority}",
+                "entity_type": "task",
+                "entity_id": task.id,
+                "metadata": {
+                    "status": task.status,
+                    "priority": task.priority,
+                    "channel": task.channel,
+                },
+            }
+        )
+
+    audit_rows = (
+        db.query(DBAuditLog)
+        .order_by(DBAuditLog.created_at.desc())
+        .limit(max(50, min(limit * 4, 400)))
+        .all()
+    )
+    for row in audit_rows:
+        metadata = row.metadata_json or {}
+        metadata_project_id = str(metadata.get("project_id") or "")
+        if row.entity_id != project_id and metadata_project_id != project_id:
+            continue
+        items.append(
+            {
+                "id": f"audit-{row.id}",
+                "timestamp": row.created_at.isoformat() if row.created_at else datetime.now().isoformat(),
+                "actor": row.actor,
+                "action": row.action,
+                "title": row.action.replace("_", " "),
+                "description": row.entity_type,
+                "entity_type": row.entity_type,
+                "entity_id": row.entity_id,
+                "metadata": metadata,
+            }
+        )
+
+    items.sort(key=lambda item: item.get("timestamp") or "", reverse=True)
+    return {
+        "project_id": project_id,
+        "total": len(items),
+        "items": items[: max(1, min(limit, 200))],
+    }
 
 
 def _get_stats_payload(db: Session) -> dict[str, Any]:
@@ -1591,6 +3892,9 @@ def _get_tasks_payload(
     page_size: int,
     search: str | None = None,
     status_filter: str | None = None,
+    channel_filter: str | None = None,
+    source_filter: str | None = None,
+    project_filter: str | None = None,
     sort_by: str = "created_at",
     sort_desc: bool = True,
 ) -> dict[str, Any]:
@@ -1601,13 +3905,24 @@ def _get_tasks_payload(
         query = query.filter(
             or_(
                 DBTask.title.ilike(pattern),
+                DBTask.description.ilike(pattern),
                 DBTask.assigned_to.ilike(pattern),
                 DBTask.lead_id.ilike(pattern),
+                DBTask.project_id.ilike(pattern),
+                DBTask.project_name.ilike(pattern),
+                DBTask.channel.ilike(pattern),
+                DBTask.source.ilike(pattern),
             )
         )
 
     if status_filter and status_filter.strip():
         query = query.filter(DBTask.status == _coerce_task_status(status_filter))
+    if channel_filter and channel_filter.strip():
+        query = query.filter(DBTask.channel == _coerce_task_channel(channel_filter))
+    if source_filter and source_filter.strip():
+        query = query.filter(DBTask.source == _coerce_task_source(source_filter))
+    if project_filter and project_filter.strip():
+        query = query.filter(DBTask.project_id == project_filter.strip())
 
     total = query.count()
 
@@ -1618,6 +3933,12 @@ def _get_tasks_payload(
         "priority": DBTask.priority,
         "due_date": DBTask.due_date,
         "assigned_to": DBTask.assigned_to,
+        "project_id": DBTask.project_id,
+        "project_name": DBTask.project_name,
+        "channel": DBTask.channel,
+        "sequence_step": DBTask.sequence_step,
+        "source": DBTask.source,
+        "updated_at": DBTask.updated_at,
     }
     sort_column = sort_map.get(sort_by, DBTask.created_at)
     if sort_desc:
@@ -1852,7 +4173,7 @@ def _search_payload(db: Session, query: str, limit: int) -> dict[str, Any]:
                 "id": task.id,
                 "title": task.title,
                 "subtitle": f"{task.status} - {task.priority}",
-                "href": f"/tasks?task_id={task.id}",
+                "href": f"/tasks/{task.id}",
             }
         )
 
@@ -2044,12 +4365,137 @@ def _csv_default_fields(entity: str) -> list[str]:
         return ["id", "email", "first_name", "last_name", "status", "segment", "total_score"]
     if entity == "tasks":
         return ["id", "title", "status", "priority", "assigned_to", "lead_id", "due_date"]
+    if entity == "systems":
+        return ["system_key", "system_type", "status", "item_count", "updated_at", "details"]
     return ["id", "name", "status", "lead_id", "due_date", "created_at"]
+
+
+def _build_system_export_rows(db: Session) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+
+    settings_payload = _get_admin_settings_payload(db)
+    settings_updated_at = (
+        db.query(func.max(DBAdminSetting.updated_at)).scalar()
+    )
+    rows.append(
+        {
+            "system_key": "admin_settings",
+            "system_type": "settings",
+            "status": "configured",
+            "item_count": len(settings_payload),
+            "updated_at": settings_updated_at.isoformat() if settings_updated_at else "",
+            "details": json.dumps(
+                {
+                    "locale": settings_payload.get("locale"),
+                    "timezone": settings_payload.get("timezone"),
+                    "theme": settings_payload.get("theme"),
+                    "refresh_mode": settings_payload.get("default_refresh_mode"),
+                },
+                ensure_ascii=False,
+            ),
+        }
+    )
+
+    integrations_payload = _list_integrations_payload(db).get("providers", {})
+    for key, payload in integrations_payload.items():
+        rows.append(
+            {
+                "system_key": key,
+                "system_type": "integration",
+                "status": "enabled" if payload.get("enabled") else "disabled",
+                "item_count": 1,
+                "updated_at": payload.get("updated_at") or "",
+                "details": json.dumps(payload.get("meta") or {}, ensure_ascii=False),
+            }
+        )
+
+    webhook_rows = db.query(DBWebhookConfig).order_by(DBWebhookConfig.created_at.desc()).all()
+    if webhook_rows:
+        for webhook in webhook_rows:
+            rows.append(
+                {
+                    "system_key": webhook.id,
+                    "system_type": "webhook",
+                    "status": "enabled" if webhook.enabled else "disabled",
+                    "item_count": len(webhook.events or []),
+                    "updated_at": webhook.updated_at.isoformat() if webhook.updated_at else "",
+                    "details": json.dumps(
+                        {
+                            "name": webhook.name,
+                            "url": webhook.url,
+                            "events": webhook.events or [],
+                        },
+                        ensure_ascii=False,
+                    ),
+                }
+            )
+    else:
+        rows.append(
+            {
+                "system_key": "webhooks",
+                "system_type": "webhook",
+                "status": "not_configured",
+                "item_count": 0,
+                "updated_at": "",
+                "details": "{}",
+            }
+        )
+
+    schedule_rows = db.query(DBReportSchedule).order_by(DBReportSchedule.created_at.desc()).all()
+    if schedule_rows:
+        for schedule in schedule_rows:
+            rows.append(
+                {
+                    "system_key": schedule.id,
+                    "system_type": "report_schedule",
+                    "status": "enabled" if schedule.enabled else "disabled",
+                    "item_count": len(schedule.recipients_json or []),
+                    "updated_at": schedule.updated_at.isoformat() if schedule.updated_at else "",
+                    "details": json.dumps(
+                        {
+                            "name": schedule.name,
+                            "frequency": schedule.frequency,
+                            "format": schedule.format,
+                            "timezone": schedule.timezone,
+                        },
+                        ensure_ascii=False,
+                    ),
+                }
+            )
+    else:
+        rows.append(
+            {
+                "system_key": "report_schedules",
+                "system_type": "report_schedule",
+                "status": "not_configured",
+                "item_count": 0,
+                "updated_at": "",
+                "details": "{}",
+            }
+        )
+
+    total_users = db.query(DBAdminUser).count()
+    active_users = db.query(DBAdminUser).filter(DBAdminUser.status == "active").count()
+    rows.append(
+        {
+            "system_key": "admin_users",
+            "system_type": "security",
+            "status": "configured" if total_users else "not_configured",
+            "item_count": total_users,
+            "updated_at": "",
+            "details": json.dumps(
+                {"active_users": active_users, "inactive_users": max(0, total_users - active_users)},
+                ensure_ascii=False,
+            ),
+        }
+    )
+
+    return rows
 
 
 def _export_csv_payload(db: Session, *, entity: str, fields: str | None) -> tuple[str, str]:
     selected_entity = entity.strip().lower()
-    if selected_entity not in {"leads", "tasks", "projects"}:
+    if selected_entity not in {"leads", "tasks", "projects", "systems"}:
         raise HTTPException(
             status_code=HTTP_422_STATUS,
             detail=f"Unsupported export entity: {entity}",
@@ -2089,6 +4535,8 @@ def _export_csv_payload(db: Session, *, entity: str, fields: str | None) -> tupl
             }
             for row in rows
         ]
+    elif selected_entity == "systems":
+        serialized = _build_system_export_rows(db)
     else:
         rows = db.query(DBProject).order_by(DBProject.created_at.desc()).all()
         serialized = [
@@ -2635,6 +5083,526 @@ def _build_report_snapshot(db: Session) -> dict[str, Any]:
     }
 
 
+def _serialize_optional_datetime(value: datetime | None) -> str | None:
+    if value is None:
+        return None
+    return value.isoformat()
+
+
+def _build_sync_source_payload(
+    *,
+    entity: str,
+    count: int,
+    latest_at: datetime | None,
+    now: datetime,
+) -> tuple[dict[str, Any], datetime | None]:
+    stale_seconds: int | None = None
+    if latest_at is not None:
+        stale_seconds = max(0, int((now - latest_at).total_seconds()))
+
+    if count <= 0:
+        status_value = "empty"
+    elif stale_seconds is None:
+        status_value = "warning"
+    elif stale_seconds >= SYNC_STALE_ERROR_SECONDS:
+        status_value = "error"
+    elif stale_seconds >= SYNC_STALE_WARNING_SECONDS:
+        status_value = "warning"
+    else:
+        status_value = "ok"
+
+    return (
+        {
+            "entity": entity,
+            "count": int(count),
+            "last_updated_at": _serialize_optional_datetime(latest_at),
+            "stale_seconds": stale_seconds,
+            "status": status_value,
+        },
+        latest_at,
+    )
+
+
+def _build_sync_health_payload(db: Session) -> dict[str, Any]:
+    now = datetime.now()
+
+    lead_count = db.query(DBLead).count()
+    lead_latest = db.query(func.max(DBLead.updated_at)).scalar()
+    if lead_latest is None:
+        lead_latest = db.query(func.max(DBLead.created_at)).scalar()
+
+    task_count = db.query(DBTask).count()
+    task_latest = db.query(func.max(DBTask.created_at)).scalar()
+
+    project_count = db.query(DBProject).count()
+    project_latest = db.query(func.max(DBProject.updated_at)).scalar()
+    if project_latest is None:
+        project_latest = db.query(func.max(DBProject.created_at)).scalar()
+
+    report_run_count = db.query(DBReportRun).count()
+    report_run_latest = db.query(func.max(DBReportRun.created_at)).scalar()
+
+    assistant_run_count = db.query(DBAssistantRun).count()
+    assistant_run_latest = db.query(func.max(DBAssistantRun.created_at)).scalar()
+
+    notification_count = db.query(DBNotification).count()
+    notification_latest = db.query(func.max(DBNotification.created_at)).scalar()
+
+    sources_with_dates = [
+        _build_sync_source_payload(entity="leads", count=lead_count, latest_at=lead_latest, now=now),
+        _build_sync_source_payload(entity="tasks", count=task_count, latest_at=task_latest, now=now),
+        _build_sync_source_payload(entity="projects", count=project_count, latest_at=project_latest, now=now),
+        _build_sync_source_payload(
+            entity="report_runs",
+            count=report_run_count,
+            latest_at=report_run_latest,
+            now=now,
+        ),
+        _build_sync_source_payload(
+            entity="assistant_runs",
+            count=assistant_run_count,
+            latest_at=assistant_run_latest,
+            now=now,
+        ),
+        _build_sync_source_payload(
+            entity="notifications",
+            count=notification_count,
+            latest_at=notification_latest,
+            now=now,
+        ),
+    ]
+    sources = [payload for payload, _ in sources_with_dates]
+    latest_candidates = [stamp for _, stamp in sources_with_dates if stamp is not None]
+    last_sync_at = max(latest_candidates) if latest_candidates else None
+    stale_seconds = max(0, int((now - last_sync_at).total_seconds())) if last_sync_at else None
+
+    statuses = {item["status"] for item in sources}
+    if "error" in statuses:
+        status_value = "error"
+    elif "warning" in statuses:
+        status_value = "warning"
+    elif statuses == {"empty"}:
+        status_value = "empty"
+    else:
+        status_value = "ok"
+
+    return {
+        "generated_at": now.isoformat(),
+        "status": status_value,
+        "ok": status_value in {"ok", "empty"},
+        "last_sync_at": _serialize_optional_datetime(last_sync_at),
+        "stale_seconds": stale_seconds,
+        "sources": sources,
+    }
+
+
+def _build_data_integrity_payload(db: Session) -> dict[str, Any]:
+    now = datetime.now()
+    stale_before = now - timedelta(days=INTEGRITY_STALE_UNSCORED_DAYS)
+
+    lead_total = db.query(DBLead).count()
+    task_total = db.query(DBTask).count()
+    project_total = db.query(DBProject).count()
+
+    orphan_tasks = (
+        db.query(DBTask.id)
+        .outerjoin(DBLead, DBTask.lead_id == DBLead.id)
+        .filter(DBTask.lead_id.is_not(None), DBLead.id.is_(None))
+        .count()
+    )
+    orphan_projects = (
+        db.query(DBProject.id)
+        .outerjoin(DBLead, DBProject.lead_id == DBLead.id)
+        .filter(DBProject.lead_id.is_not(None), DBLead.id.is_(None))
+        .count()
+    )
+    tasks_without_assignee = (
+        db.query(DBTask.id)
+        .filter(func.trim(func.coalesce(DBTask.assigned_to, "")) == "")
+        .count()
+    )
+    stale_unscored_leads = (
+        db.query(DBLead.id)
+        .filter(or_(DBLead.last_scored_at.is_(None), DBLead.last_scored_at < stale_before))
+        .count()
+    )
+    failed_report_runs_30d = (
+        db.query(DBReportRun.id)
+        .filter(DBReportRun.status == "failed", DBReportRun.created_at >= now - timedelta(days=30))
+        .count()
+    )
+
+    duplicate_email_rows = (
+        db.query(func.lower(DBLead.email), func.count(DBLead.id))
+        .filter(DBLead.email.is_not(None))
+        .group_by(func.lower(DBLead.email))
+        .having(func.count(DBLead.id) > 1)
+        .all()
+    )
+    duplicate_lead_emails = sum(int(count) - 1 for _, count in duplicate_email_rows)
+
+    issues: list[dict[str, Any]] = []
+    if orphan_tasks > 0:
+        issues.append(
+            {
+                "code": "orphan_tasks",
+                "severity": "error",
+                "count": orphan_tasks,
+                "message": "Certaines taches referencent un lead inexistant.",
+            }
+        )
+    if orphan_projects > 0:
+        issues.append(
+            {
+                "code": "orphan_projects",
+                "severity": "error",
+                "count": orphan_projects,
+                "message": "Certains projets referencent un lead inexistant.",
+            }
+        )
+    if duplicate_lead_emails > 0:
+        issues.append(
+            {
+                "code": "duplicate_lead_emails",
+                "severity": "error",
+                "count": duplicate_lead_emails,
+                "message": "Des leads partagent la meme adresse email.",
+            }
+        )
+    if tasks_without_assignee > 0:
+        issues.append(
+            {
+                "code": "tasks_without_assignee",
+                "severity": "warning",
+                "count": tasks_without_assignee,
+                "message": "Des taches n'ont pas d'assigne explicite.",
+            }
+        )
+    if stale_unscored_leads > 0:
+        issues.append(
+            {
+                "code": "stale_unscored_leads",
+                "severity": "warning",
+                "count": stale_unscored_leads,
+                "message": "Des leads ne sont pas rescored recemment.",
+            }
+        )
+    if failed_report_runs_30d > 0:
+        issues.append(
+            {
+                "code": "failed_report_runs_30d",
+                "severity": "warning",
+                "count": failed_report_runs_30d,
+                "message": "Des executions de rapports ont echoue sur les 30 derniers jours.",
+            }
+        )
+
+    severities = {item["severity"] for item in issues}
+    if "error" in severities:
+        status_value = "error"
+    elif "warning" in severities:
+        status_value = "warning"
+    else:
+        status_value = "ok"
+
+    return {
+        "generated_at": now.isoformat(),
+        "status": status_value,
+        "ok": status_value == "ok",
+        "totals": {
+            "leads": lead_total,
+            "tasks": task_total,
+            "projects": project_total,
+        },
+        "checks": {
+            "orphan_tasks": orphan_tasks,
+            "orphan_projects": orphan_projects,
+            "duplicate_lead_emails": duplicate_lead_emails,
+            "tasks_without_assignee": tasks_without_assignee,
+            "stale_unscored_leads": stale_unscored_leads,
+            "failed_report_runs_30d": failed_report_runs_30d,
+        },
+        "issues": issues,
+    }
+
+
+def _build_metrics_overview_payload(db: Session) -> dict[str, Any]:
+    report_30d = _build_report_30d_payload(db, window="30d")
+    sync_health = _build_sync_health_payload(db)
+    integrity = _build_data_integrity_payload(db)
+    return {
+        "generated_at": datetime.now().isoformat(),
+        "request": request_metrics.snapshot(),
+        "funnel": _get_stats_payload(db),
+        "analytics": _get_analytics_payload(db),
+        "report_30d": {
+            "window": report_30d["window"],
+            "kpis": report_30d["kpis"],
+            "quality_flags": report_30d["quality_flags"],
+        },
+        "sync": {
+            "status": sync_health["status"],
+            "ok": sync_health["ok"],
+            "last_sync_at": sync_health["last_sync_at"],
+            "stale_seconds": sync_health["stale_seconds"],
+        },
+        "integrity": {
+            "status": integrity["status"],
+            "ok": integrity["ok"],
+            "issue_count": len(integrity["issues"]),
+        },
+    }
+
+
+def _build_report_30d_payload(db: Session, *, window: str = "30d") -> dict[str, Any]:
+    window_label, window_days = _parse_window_days(window, default_days=30)
+    now = datetime.now()
+    start_at = now - timedelta(days=window_days - 1)
+
+    contacted_statuses = [
+        LeadStatus.CONTACTED,
+        LeadStatus.INTERESTED,
+        LeadStatus.CONVERTED,
+        LeadStatus.LOST,
+    ]
+
+    leads_created_total = db.query(DBLead).filter(DBLead.created_at >= start_at).count()
+    leads_scored_total = (
+        db.query(DBLead)
+        .filter(DBLead.last_scored_at.is_not(None), DBLead.last_scored_at >= start_at)
+        .count()
+    )
+    leads_contacted_total = (
+        db.query(DBLead)
+        .filter(DBLead.updated_at >= start_at, DBLead.status.in_(contacted_statuses))
+        .count()
+    )
+    leads_closed_total = (
+        db.query(DBLead)
+        .filter(DBLead.updated_at >= start_at, DBLead.status == LeadStatus.CONVERTED)
+        .count()
+    )
+
+    tasks_created_total = db.query(DBTask).filter(DBTask.created_at >= start_at).count()
+    tasks_completed_total = (
+        db.query(DBTask)
+        .filter(DBTask.created_at >= start_at, DBTask.status == "Done")
+        .count()
+    )
+    task_completion_rate = round((tasks_completed_total / tasks_created_total) * 100, 2) if tasks_created_total else 0.0
+
+    buckets: dict[str, dict[str, Any]] = {}
+    for offset in range(window_days):
+        day = (start_at + timedelta(days=offset)).date().isoformat()
+        buckets[day] = {
+            "date": day,
+            "created": 0,
+            "scored": 0,
+            "contacted": 0,
+            "closed": 0,
+            "tasks_created": 0,
+            "tasks_completed": 0,
+        }
+
+    created_rows = (
+        db.query(func.date(DBLead.created_at), func.count(DBLead.id))
+        .filter(DBLead.created_at >= start_at)
+        .group_by(func.date(DBLead.created_at))
+        .all()
+    )
+    for day_value, count in created_rows:
+        key = str(day_value)
+        if key in buckets:
+            buckets[key]["created"] = int(count)
+
+    scored_rows = (
+        db.query(func.date(DBLead.last_scored_at), func.count(DBLead.id))
+        .filter(DBLead.last_scored_at.is_not(None), DBLead.last_scored_at >= start_at)
+        .group_by(func.date(DBLead.last_scored_at))
+        .all()
+    )
+    for day_value, count in scored_rows:
+        key = str(day_value)
+        if key in buckets:
+            buckets[key]["scored"] = int(count)
+
+    contacted_rows = (
+        db.query(func.date(DBLead.updated_at), func.count(DBLead.id))
+        .filter(DBLead.updated_at >= start_at, DBLead.status.in_(contacted_statuses))
+        .group_by(func.date(DBLead.updated_at))
+        .all()
+    )
+    for day_value, count in contacted_rows:
+        key = str(day_value)
+        if key in buckets:
+            buckets[key]["contacted"] = int(count)
+
+    closed_rows = (
+        db.query(func.date(DBLead.updated_at), func.count(DBLead.id))
+        .filter(DBLead.updated_at >= start_at, DBLead.status == LeadStatus.CONVERTED)
+        .group_by(func.date(DBLead.updated_at))
+        .all()
+    )
+    for day_value, count in closed_rows:
+        key = str(day_value)
+        if key in buckets:
+            buckets[key]["closed"] = int(count)
+
+    task_created_rows = (
+        db.query(func.date(DBTask.created_at), func.count(DBTask.id))
+        .filter(DBTask.created_at >= start_at)
+        .group_by(func.date(DBTask.created_at))
+        .all()
+    )
+    for day_value, count in task_created_rows:
+        key = str(day_value)
+        if key in buckets:
+            buckets[key]["tasks_created"] = int(count)
+
+    task_done_rows = (
+        db.query(func.date(DBTask.created_at), func.count(DBTask.id))
+        .filter(DBTask.created_at >= start_at, DBTask.status == "Done")
+        .group_by(func.date(DBTask.created_at))
+        .all()
+    )
+    for day_value, count in task_done_rows:
+        key = str(day_value)
+        if key in buckets:
+            buckets[key]["tasks_completed"] = int(count)
+
+    channel_agg: dict[str, dict[str, Any]] = {}
+    task_rows = (
+        db.query(DBTask.channel, DBTask.status)
+        .filter(DBTask.created_at >= start_at)
+        .all()
+    )
+    for channel, status in task_rows:
+        key = (channel or "email").strip().lower() or "email"
+        payload = channel_agg.setdefault(key, {"channel": key, "count": 0, "completed": 0})
+        payload["count"] += 1
+        if status == "Done":
+            payload["completed"] += 1
+    channel_breakdown = sorted(channel_agg.values(), key=lambda item: item["count"], reverse=True)
+
+    timeline_items: list[dict[str, Any]] = []
+    lead_rows = (
+        db.query(DBLead)
+        .filter(DBLead.created_at >= start_at)
+        .order_by(DBLead.created_at.desc())
+        .limit(120)
+        .all()
+    )
+    for row in lead_rows:
+        timeline_items.append(
+            {
+                "id": f"lead-{row.id}",
+                "event_type": "lead_created",
+                "timestamp": row.created_at.isoformat() if row.created_at else now.isoformat(),
+                "title": "Lead cree",
+                "description": row.email,
+                "lead_id": row.id,
+            }
+        )
+
+    score_rows = (
+        db.query(DBLead)
+        .filter(DBLead.last_scored_at.is_not(None), DBLead.last_scored_at >= start_at)
+        .order_by(DBLead.last_scored_at.desc())
+        .limit(120)
+        .all()
+    )
+    for row in score_rows:
+        timeline_items.append(
+            {
+                "id": f"score-{row.id}",
+                "event_type": "lead_scored",
+                "timestamp": row.last_scored_at.isoformat() if row.last_scored_at else now.isoformat(),
+                "title": "Lead rescored",
+                "description": f"Score total {round(float(row.total_score or 0.0), 1)}",
+                "lead_id": row.id,
+            }
+        )
+
+    task_timeline_rows = (
+        db.query(DBTask)
+        .filter(DBTask.created_at >= start_at)
+        .order_by(DBTask.created_at.desc())
+        .limit(200)
+        .all()
+    )
+    for row in task_timeline_rows:
+        timeline_items.append(
+            {
+                "id": f"task-{row.id}",
+                "event_type": "task_created",
+                "timestamp": row.created_at.isoformat() if row.created_at else now.isoformat(),
+                "title": row.title,
+                "description": f"{row.channel or 'email'} | {row.status}",
+                "task_id": row.id,
+                "lead_id": row.lead_id,
+                "channel": row.channel or "email",
+                "source": row.source or "manual",
+            }
+        )
+
+    run_rows = (
+        db.query(DBReportRun)
+        .filter(DBReportRun.created_at >= start_at)
+        .order_by(DBReportRun.created_at.desc())
+        .limit(60)
+        .all()
+    )
+    for row in run_rows:
+        timeline_items.append(
+            {
+                "id": f"report-run-{row.id}",
+                "event_type": "report_run",
+                "timestamp": row.created_at.isoformat() if row.created_at else now.isoformat(),
+                "title": "Execution de rapport",
+                "description": f"{row.status} ({row.output_format})",
+                "run_id": row.id,
+            }
+        )
+
+    timeline_items.sort(key=lambda item: item.get("timestamp") or "", reverse=True)
+
+    stale_unscored = (
+        db.query(DBLead)
+        .filter(or_(DBLead.last_scored_at.is_(None), DBLead.last_scored_at < start_at))
+        .count()
+    )
+    unassigned_tasks = (
+        db.query(DBTask)
+        .filter(DBTask.created_at >= start_at, or_(DBTask.assigned_to.is_(None), DBTask.assigned_to == ""))
+        .count()
+    )
+
+    return {
+        "window": {
+            "label": window_label,
+            "days": window_days,
+            "from": start_at.isoformat(),
+            "to": now.isoformat(),
+        },
+        "kpis": {
+            "leads_created_total": leads_created_total,
+            "leads_scored_total": leads_scored_total,
+            "leads_contacted_total": leads_contacted_total,
+            "leads_closed_total": leads_closed_total,
+            "tasks_created_total": tasks_created_total,
+            "tasks_completed_total": tasks_completed_total,
+            "task_completion_rate": task_completion_rate,
+        },
+        "daily_trend": list(buckets.values()),
+        "timeline_items": timeline_items[:250],
+        "channel_breakdown": channel_breakdown,
+        "quality_flags": {
+            "stale_unscored_leads": stale_unscored,
+            "unassigned_tasks": unassigned_tasks,
+        },
+    }
+
+
 def _pdf_escape(value: str) -> str:
     return value.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
 
@@ -3001,6 +5969,8 @@ def create_app() -> FastAPI:
 
     @app.middleware("http")
     async def observe_admin_requests(request: Request, call_next):
+        request_id = request.headers.get("x-request-id") or str(uuid.uuid4())
+        request.state.request_id = request_id
         started_at = time.perf_counter()
         status_code = 500
         try:
@@ -3022,6 +5992,7 @@ def create_app() -> FastAPI:
                         "status_code": status_code,
                         "latency_ms": latency_ms,
                         "client_ip": _client_ip(request),
+                        "request_id": request_id,
                     },
                 )
             raise
@@ -3041,9 +6012,72 @@ def create_app() -> FastAPI:
                     "status_code": status_code,
                     "latency_ms": latency_ms,
                     "client_ip": _client_ip(request),
+                    "request_id": request_id,
                 },
             )
+        response.headers["x-request-id"] = request_id
         return response
+
+    @app.exception_handler(HTTPException)
+    async def fastapi_http_exception_handler(request: Request, exc: HTTPException):
+        message, details = _extract_error_message_and_details(exc.detail)
+        code: str | None = None
+        if isinstance(exc.detail, dict):
+            maybe_code = exc.detail.get("code")
+            if isinstance(maybe_code, str) and maybe_code.strip():
+                code = maybe_code.strip().upper()
+        return _error_response(
+            request,
+            status_code=exc.status_code,
+            code=code,
+            message=message,
+            details=details,
+            headers=exc.headers,
+        )
+
+    @app.exception_handler(StarletteHTTPException)
+    async def starlette_http_exception_handler(request: Request, exc: StarletteHTTPException):
+        message, details = _extract_error_message_and_details(exc.detail)
+        return _error_response(
+            request,
+            status_code=exc.status_code,
+            message=message,
+            details=details,
+            headers=getattr(exc, "headers", None),
+        )
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_exception_handler(request: Request, exc: RequestValidationError):
+        return _error_response(
+            request,
+            status_code=HTTP_422_STATUS,
+            code="VALIDATION_ERROR",
+            message="Request validation failed.",
+            details={"issues": exc.errors()},
+            retryable=False,
+        )
+
+    @app.exception_handler(Exception)
+    async def unhandled_exception_handler(request: Request, exc: Exception):
+        logger.exception(
+            "Unhandled exception",
+            extra={
+                "path": request.url.path,
+                "method": request.method,
+                "request_id": getattr(request.state, "request_id", None),
+            },
+        )
+        details = {}
+        if not _is_production():
+            details = {"type": exc.__class__.__name__, "message": str(exc)}
+        return _error_response(
+            request,
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            code="INTERNAL_ERROR",
+            message="Internal server error.",
+            details=details,
+            retryable=True,
+        )
 
     api_v1 = APIRouter(prefix="/api/v1")
     auth_v1 = APIRouter(
@@ -3251,6 +6285,18 @@ def create_app() -> FastAPI:
     def get_metrics_v1() -> dict[str, Any]:
         return request_metrics.snapshot()
 
+    @admin_v1.get("/metrics/overview")
+    def get_metrics_overview_v1(db: Session = Depends(get_db)) -> dict[str, Any]:
+        return _build_metrics_overview_payload(db)
+
+    @admin_v1.get("/sync/health")
+    def get_sync_health_v1(db: Session = Depends(get_db)) -> dict[str, Any]:
+        return _build_sync_health_payload(db)
+
+    @admin_v1.get("/data/integrity")
+    def get_data_integrity_v1(db: Session = Depends(get_db)) -> dict[str, Any]:
+        return _build_data_integrity_payload(db)
+
     @admin_v1.get("/leads")
     def get_leads_v1(
         db: Session = Depends(get_db),
@@ -3313,35 +6359,140 @@ def create_app() -> FastAPI:
         lead_id: str,
         db: Session = Depends(get_db),
     ) -> Lead:
-        db_lead = db.query(DBLead).filter(DBLead.id == lead_id).first()
-        if not db_lead:
-            raise HTTPException(status_code=404, detail="Lead not found")
+        db_lead = _get_lead_or_404(db, lead_id)
         return _db_to_lead(db_lead)
 
     @admin_v1.patch("/leads/{lead_id}")
     def update_lead_v1(
         lead_id: str,
-        payload: dict[str, Any],
+        payload: AdminLeadUpdateRequest,
+        actor: str = "admin",
         db: Session = Depends(get_db),
     ) -> Lead:
-        db_lead = db.query(DBLead).filter(DBLead.id == lead_id).first()
-        if not db_lead:
-            raise HTTPException(status_code=404, detail="Lead not found")
-        
-        # Simple update logic for now
-        if "status" in payload:
-            db_lead.status = _coerce_lead_status(payload["status"])
-        if "segment" in payload:
-            db_lead.segment = payload["segment"]
-        
-        try:
-            db.commit()
-            db.refresh(db_lead)
-        except SQLAlchemyError as exc:
-            db.rollback()
-            raise HTTPException(status_code=500, detail=str(exc))
-            
-        return _db_to_lead(db_lead)
+        db_lead = _get_lead_or_404(db, lead_id)
+        updated_lead, changes = _apply_lead_update_payload(db, db_lead=db_lead, payload=payload)
+        if changes:
+            _audit_log(
+                db,
+                actor=actor,
+                action="lead_updated",
+                entity_type="lead",
+                entity_id=lead_id,
+                metadata={"changes": changes},
+            )
+        return updated_lead
+
+    @admin_v1.get("/leads/{lead_id}/interactions")
+    def get_lead_interactions_v1(
+        lead_id: str,
+        db: Session = Depends(get_db),
+    ) -> list[dict[str, Any]]:
+        return _list_lead_interactions_payload(db, lead_id=lead_id)
+
+    @admin_v1.get("/leads/{lead_id}/opportunities")
+    def get_lead_opportunities_v1(
+        lead_id: str,
+        db: Session = Depends(get_db),
+    ) -> list[dict[str, Any]]:
+        return _list_lead_opportunities_payload(db, lead_id=lead_id)
+
+    @admin_v1.post("/leads/{lead_id}/opportunities")
+    def create_lead_opportunity_v1(
+        lead_id: str,
+        payload: AdminLeadOpportunityCreateRequest,
+        actor: str = "admin",
+        db: Session = Depends(get_db),
+    ) -> dict[str, Any]:
+        created = _create_lead_opportunity_payload(db, lead_id=lead_id, payload=payload)
+        _audit_log(
+            db,
+            actor=actor,
+            action="lead_opportunity_created",
+            entity_type="lead",
+            entity_id=lead_id,
+            metadata={"opportunity_id": created.get("id"), "name": created.get("name")},
+        )
+        return created
+
+    @admin_v1.patch("/leads/{lead_id}/opportunities/{opportunity_id}")
+    def update_lead_opportunity_v1(
+        lead_id: str,
+        opportunity_id: str,
+        payload: AdminLeadOpportunityUpdateRequest,
+        actor: str = "admin",
+        db: Session = Depends(get_db),
+    ) -> dict[str, Any]:
+        updated, changes = _update_lead_opportunity_payload(
+            db,
+            lead_id=lead_id,
+            opportunity_id=opportunity_id,
+            payload=payload,
+        )
+        if changes:
+            _audit_log(
+                db,
+                actor=actor,
+                action="lead_opportunity_updated",
+                entity_type="lead",
+                entity_id=lead_id,
+                metadata={"opportunity_id": opportunity_id, "changes": changes},
+            )
+        return updated
+
+    @admin_v1.get("/leads/{lead_id}/notes")
+    def get_lead_notes_v1(
+        lead_id: str,
+        db: Session = Depends(get_db),
+    ) -> dict[str, Any]:
+        return _list_lead_notes_payload(db, lead_id=lead_id)
+
+    @admin_v1.put("/leads/{lead_id}/notes")
+    def put_lead_notes_v1(
+        lead_id: str,
+        payload: AdminLeadNotesUpdateRequest,
+        actor: str = "admin",
+        db: Session = Depends(get_db),
+    ) -> dict[str, Any]:
+        saved_payload, stats = _save_lead_notes_payload(
+            db,
+            lead_id=lead_id,
+            payload=payload,
+            actor=actor,
+        )
+        _audit_log(
+            db,
+            actor=actor,
+            action="lead_notes_updated",
+            entity_type="lead",
+            entity_id=lead_id,
+            metadata=stats,
+        )
+        return saved_payload
+
+    @admin_v1.post("/leads/{lead_id}/add-to-campaign")
+    def add_lead_to_campaign_v1(
+        lead_id: str,
+        payload: AdminLeadAddToCampaignRequest,
+        actor: str = "admin",
+        db: Session = Depends(get_db),
+    ) -> dict[str, Any]:
+        _get_lead_or_404(db, lead_id)
+        result = _campaign_svc.enroll_campaign_leads(
+            db,
+            payload.campaign_id,
+            lead_ids=[lead_id],
+            filters=None,
+            max_leads=1,
+        )
+        _audit_log(
+            db,
+            actor=actor,
+            action="lead_added_to_campaign",
+            entity_type="lead",
+            entity_id=lead_id,
+            metadata={"campaign_id": payload.campaign_id, "created": result.get("created", 0)},
+        )
+        return result
 
     @admin_v1.get("/leads/{lead_id}/tasks")
     def get_lead_tasks_v1(
@@ -3358,6 +6509,53 @@ def create_app() -> FastAPI:
     ) -> list[dict[str, Any]]:
         projects = db.query(DBProject).filter(DBProject.lead_id == lead_id).order_by(DBProject.created_at.desc()).all()
         return [_serialize_project(project) for project in projects]
+
+    @admin_v1.get("/leads/{lead_id}/communication-plan")
+    def get_lead_communication_plan_v1(
+        lead_id: str,
+        channels: str | None = Query(default=None),
+        db: Session = Depends(get_db),
+    ) -> dict[str, Any]:
+        db_lead = db.query(DBLead).filter(DBLead.id == lead_id).first()
+        if not db_lead:
+            raise HTTPException(status_code=404, detail="Lead not found")
+        raw_channels = (
+            [item.strip() for item in channels.split(",") if item.strip()]
+            if channels and channels.strip()
+            else None
+        )
+        return _build_communication_plan_payload(db_lead, channels=raw_channels)
+
+    @admin_v1.post("/leads/{lead_id}/tasks/auto-create")
+    def auto_create_lead_tasks_v1(
+        lead_id: str,
+        payload: AdminLeadAutoTaskCreateRequest,
+        actor: str = "admin",
+        db: Session = Depends(get_db),
+    ) -> dict[str, Any]:
+        result = _create_auto_tasks_for_lead_payload(db, lead_id=lead_id, payload=payload)
+        _audit_log(
+            db,
+            actor=actor,
+            action="lead_tasks_auto_created",
+            entity_type="lead",
+            entity_id=lead_id,
+            metadata={
+                "dry_run": payload.dry_run,
+                "mode": payload.mode,
+                "created_count": result.get("created_count", 0),
+                "rule_id": result.get("rule", {}).get("id"),
+            },
+        )
+        return result
+
+    @admin_v1.get("/leads/{lead_id}/history")
+    def get_lead_history_v1(
+        lead_id: str,
+        window: str = Query(default="30d"),
+        db: Session = Depends(get_db),
+    ) -> dict[str, Any]:
+        return _build_lead_history_payload(db, lead_id=lead_id, window=window)
 
 
     @admin_v1.post("/leads")
@@ -3434,7 +6632,7 @@ def create_app() -> FastAPI:
             message=f"Tache '{created.get('title')}' ajoutee.",
             entity_type="task",
             entity_id=created.get("id"),
-            link_href="/tasks",
+            link_href=f"/tasks/{created.get('id')}",
             metadata={"priority": created.get("priority")},
         )
         _audit_log(
@@ -3443,6 +6641,7 @@ def create_app() -> FastAPI:
             action="task_created",
             entity_type="task",
             entity_id=created.get("id"),
+            metadata={"project_id": created.get("project_id")},
         )
         return created
 
@@ -3453,6 +6652,9 @@ def create_app() -> FastAPI:
         page_size: int = Query(default=25, ge=1, le=100),
         q: str | None = Query(default=None),
         status: str | None = Query(default=None),
+        channel: str | None = Query(default=None),
+        source: str | None = Query(default=None),
+        project_id: str | None = Query(default=None),
         sort: str = Query(default="created_at"),
         order: str = Query(default="desc"),
     ) -> dict[str, Any]:
@@ -3463,9 +6665,64 @@ def create_app() -> FastAPI:
             page_size=page_size,
             search=q,
             status_filter=status,
+            channel_filter=channel,
+            source_filter=source,
+            project_filter=project_id,
             sort_by=sort,
             sort_desc=sort_desc,
         )
+
+    @admin_v1.get("/tasks/{task_id}")
+    def get_task_v1(
+        task_id: str,
+        db: Session = Depends(get_db),
+    ) -> dict[str, Any]:
+        return _get_task_payload(db, task_id)
+
+    @admin_v1.post("/tasks/{task_id}/comments")
+    def add_task_comment_v1(
+        task_id: str,
+        payload: AdminTaskCommentCreateRequest,
+        actor: str = "admin",
+        db: Session = Depends(get_db),
+    ) -> dict[str, Any]:
+        updated = _add_task_comment_payload(db, task_id, payload)
+        _audit_log(
+            db,
+            actor=actor,
+            action="task_comment_added",
+            entity_type="task",
+            entity_id=task_id,
+            metadata={"mentions": payload.mentions},
+        )
+        return updated
+
+    @admin_v1.post("/tasks/{task_id}/close")
+    def close_task_v1(
+        task_id: str,
+        payload: AdminTaskCloseRequest | None = None,
+        actor: str = "admin",
+        db: Session = Depends(get_db),
+    ) -> dict[str, Any]:
+        closed = _close_task_payload(db, task_id, payload)
+        _emit_event_notification(
+            db,
+            event_key="task_completed",
+            title="Tache terminee",
+            message=f"Tache '{closed.get('title')}' terminee.",
+            entity_type="task",
+            entity_id=task_id,
+            link_href=f"/tasks/{task_id}",
+            metadata={"priority": closed.get("priority")},
+        )
+        _audit_log(
+            db,
+            actor=actor,
+            action="task_closed",
+            entity_type="task",
+            entity_id=task_id,
+        )
+        return closed
 
     @admin_v1.patch("/tasks/{task_id}")
     def update_task_v1(
@@ -3481,6 +6738,7 @@ def create_app() -> FastAPI:
             action="task_updated",
             entity_type="task",
             entity_id=task_id,
+            metadata={"project_id": updated.get("project_id")},
         )
         return updated
 
@@ -3515,10 +6773,179 @@ def create_app() -> FastAPI:
         )
         return result
 
+    @admin_v1.get("/opportunities")
+    def list_opportunities_v1(
+        db: Session = Depends(get_db),
+        page: int = Query(default=1, ge=1),
+        page_size: int = Query(default=100, ge=1, le=500),
+        q: str | None = Query(default=None),
+        status: str | None = Query(default=None),
+        assigned_to: str | None = Query(default=None),
+        amount_min: float | None = Query(default=None, ge=0),
+        amount_max: float | None = Query(default=None, ge=0),
+        date_field: str = Query(default="close"),
+        date_from: str | None = Query(default=None),
+        date_to: str | None = Query(default=None),
+        sort: str = Query(default="created_at"),
+        order: str = Query(default="desc"),
+    ) -> dict[str, Any]:
+        if date_field not in {"close", "created"}:
+            raise HTTPException(
+                status_code=HTTP_422_STATUS,
+                detail="date_field must be one of: close, created.",
+            )
+        if amount_min is not None and amount_max is not None and amount_min > amount_max:
+            raise HTTPException(
+                status_code=HTTP_422_STATUS,
+                detail="amount_min must be lower or equal to amount_max.",
+            )
+        sort_desc = order.lower() == "desc"
+        date_from_dt = _parse_query_datetime(date_from, "date_from")
+        date_to_dt = _parse_query_datetime_end(date_to, "date_to")
+        return _list_opportunities_payload(
+            db,
+            page=page,
+            page_size=page_size,
+            search=q,
+            stage_filter=status,
+            assigned_to_filter=assigned_to,
+            amount_min=amount_min,
+            amount_max=amount_max,
+            date_field=date_field,
+            date_from=date_from_dt,
+            date_to=date_to_dt,
+            sort_by=sort,
+            sort_desc=sort_desc,
+        )
+
+    @admin_v1.get("/opportunities/summary")
+    def opportunities_summary_v1(
+        db: Session = Depends(get_db),
+        q: str | None = Query(default=None),
+        status: str | None = Query(default=None),
+        assigned_to: str | None = Query(default=None),
+        amount_min: float | None = Query(default=None, ge=0),
+        amount_max: float | None = Query(default=None, ge=0),
+        date_field: str = Query(default="close"),
+        date_from: str | None = Query(default=None),
+        date_to: str | None = Query(default=None),
+    ) -> dict[str, Any]:
+        if date_field not in {"close", "created"}:
+            raise HTTPException(
+                status_code=HTTP_422_STATUS,
+                detail="date_field must be one of: close, created.",
+            )
+        if amount_min is not None and amount_max is not None and amount_min > amount_max:
+            raise HTTPException(
+                status_code=HTTP_422_STATUS,
+                detail="amount_min must be lower or equal to amount_max.",
+            )
+        date_from_dt = _parse_query_datetime(date_from, "date_from")
+        date_to_dt = _parse_query_datetime_end(date_to, "date_to")
+        return _build_opportunities_summary_payload(
+            db,
+            search=q,
+            stage_filter=status,
+            assigned_to_filter=assigned_to,
+            amount_min=amount_min,
+            amount_max=amount_max,
+            date_field=date_field,
+            date_from=date_from_dt,
+            date_to=date_to_dt,
+        )
+
+    @admin_v1.post("/opportunities/quick-lead")
+    def create_opportunity_quick_lead_v1(
+        payload: AdminOpportunityQuickLeadRequest,
+        actor: str = "admin",
+        db: Session = Depends(get_db),
+    ) -> dict[str, Any]:
+        result = _quick_create_opportunity_lead_payload(db, payload)
+        if result.get("lead", {}).get("id"):
+            _audit_log(
+                db,
+                actor=actor,
+                action="opportunity_quick_lead",
+                entity_type="lead",
+                entity_id=result["lead"]["id"],
+                metadata={"created": result.get("created", False)},
+            )
+        return result
+
+    @admin_v1.post("/opportunities")
+    def create_opportunity_v1(
+        payload: AdminOpportunityCreateRequest,
+        actor: str = "admin",
+        db: Session = Depends(get_db),
+    ) -> dict[str, Any]:
+        created = _create_opportunity_payload(db, payload)
+        _audit_log(
+            db,
+            actor=actor,
+            action="opportunity_created",
+            entity_type="opportunity",
+            entity_id=created.get("id"),
+            metadata={"prospect_id": created.get("prospect_id"), "stage": created.get("stage")},
+        )
+        return created
+
+    @admin_v1.patch("/opportunities/{opportunity_id}")
+    def update_opportunity_v1(
+        opportunity_id: str,
+        payload: AdminOpportunityUpdateRequest,
+        actor: str = "admin",
+        db: Session = Depends(get_db),
+    ) -> dict[str, Any]:
+        updated = _update_opportunity_payload(
+            db,
+            opportunity_id=opportunity_id,
+            payload=payload,
+        )
+        _audit_log(
+            db,
+            actor=actor,
+            action="opportunity_updated",
+            entity_type="opportunity",
+            entity_id=opportunity_id,
+            metadata={"stage": updated.get("stage")},
+        )
+        return updated
+
+    @admin_v1.delete("/opportunities/{opportunity_id}")
+    def delete_opportunity_v1(
+        opportunity_id: str,
+        actor: str = "admin",
+        db: Session = Depends(get_db),
+    ) -> dict[str, Any]:
+        deleted = _delete_opportunity_payload(db, opportunity_id=opportunity_id)
+        _audit_log(
+            db,
+            actor=actor,
+            action="opportunity_deleted",
+            entity_type="opportunity",
+            entity_id=opportunity_id,
+        )
+        return deleted
+
     @admin_v1.get("/projects")
     def list_projects_v1(db: Session = Depends(get_db)) -> list[dict[str, Any]]:
         projects = db.query(DBProject).order_by(DBProject.created_at.desc()).all()
         return [_serialize_project(project) for project in projects]
+
+    @admin_v1.get("/projects/{project_id}")
+    def get_project_v1(
+        project_id: str,
+        db: Session = Depends(get_db),
+    ) -> dict[str, Any]:
+        return _get_project_payload(db, project_id)
+
+    @admin_v1.get("/projects/{project_id}/activity")
+    def project_activity_v1(
+        project_id: str,
+        limit: int = Query(default=40, ge=1, le=200),
+        db: Session = Depends(get_db),
+    ) -> dict[str, Any]:
+        return _build_project_activity_payload(db, project_id=project_id, limit=limit)
 
     @admin_v1.post("/projects")
     def create_project_v1(
@@ -3553,6 +6980,7 @@ def create_app() -> FastAPI:
         actor: str = "admin",
         db: Session = Depends(get_db),
     ) -> dict[str, Any]:
+        changed_fields = sorted(payload.model_dump(exclude_unset=True).keys())
         updated = _update_project_payload(db, project_id, payload)
         _audit_log(
             db,
@@ -3560,6 +6988,7 @@ def create_app() -> FastAPI:
             action="project_updated",
             entity_type="project",
             entity_id=project_id,
+            metadata={"changed_fields": changed_fields, "project_id": project_id},
         )
         return updated
 
@@ -3578,6 +7007,299 @@ def create_app() -> FastAPI:
             entity_id=project_id,
         )
         return deleted
+
+    @admin_v1.post("/sequences")
+    def create_sequence_v1(
+        payload: CampaignSequenceCreateRequest,
+        actor: str = "admin",
+        db: Session = Depends(get_db),
+    ) -> dict[str, Any]:
+        created = _campaign_svc.create_sequence(
+            db,
+            name=payload.name,
+            description=payload.description,
+            status_value=payload.status,
+            channels=payload.channels,
+            steps=payload.steps,
+        )
+        _audit_log(
+            db,
+            actor=actor,
+            action="sequence_created",
+            entity_type="campaign_sequence",
+            entity_id=created.id,
+        )
+        return _campaign_svc.serialize_sequence(created)
+
+    @admin_v1.get("/sequences")
+    def list_sequences_v1(
+        limit: int = Query(default=25, ge=1, le=200),
+        offset: int = Query(default=0, ge=0),
+        db: Session = Depends(get_db),
+    ) -> dict[str, Any]:
+        rows = _campaign_svc.list_sequences(db, limit=limit, offset=offset)
+        total = db.query(DBCampaignSequence).count()
+        return {
+            "items": [_campaign_svc.serialize_sequence(row) for row in rows],
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+        }
+
+    @admin_v1.get("/sequences/{sequence_id}")
+    def get_sequence_v1(
+        sequence_id: str,
+        db: Session = Depends(get_db),
+    ) -> dict[str, Any]:
+        row = _campaign_svc.get_sequence_or_404(db, sequence_id)
+        return _campaign_svc.serialize_sequence(row)
+
+    @admin_v1.patch("/sequences/{sequence_id}")
+    def update_sequence_v1(
+        sequence_id: str,
+        payload: CampaignSequenceUpdateRequest,
+        actor: str = "admin",
+        db: Session = Depends(get_db),
+    ) -> dict[str, Any]:
+        updated = _campaign_svc.update_sequence(
+            db,
+            sequence_id,
+            name=payload.name,
+            description=payload.description,
+            status_value=payload.status,
+            channels=payload.channels,
+            steps=payload.steps,
+        )
+        _audit_log(
+            db,
+            actor=actor,
+            action="sequence_updated",
+            entity_type="campaign_sequence",
+            entity_id=sequence_id,
+        )
+        return _campaign_svc.serialize_sequence(updated)
+
+    @admin_v1.post("/sequences/{sequence_id}/simulate")
+    def simulate_sequence_v1(
+        sequence_id: str,
+        payload: CampaignSequenceSimulateRequest,
+        db: Session = Depends(get_db),
+    ) -> dict[str, Any]:
+        row = _campaign_svc.get_sequence_or_404(db, sequence_id)
+        start_at = _parse_datetime_field(payload.start_at, "start_at") if payload.start_at else None
+        return _campaign_svc.simulate_sequence(
+            row,
+            start_at=start_at,
+            lead_context=payload.lead_context,
+        )
+
+    @admin_v1.post("/campaigns")
+    def create_campaign_v1(
+        payload: CampaignCreateRequest,
+        actor: str = "admin",
+        db: Session = Depends(get_db),
+    ) -> dict[str, Any]:
+        created = _campaign_svc.create_campaign(
+            db,
+            name=payload.name,
+            description=payload.description,
+            status_value=payload.status,
+            sequence_id=payload.sequence_id,
+            channel_strategy=payload.channel_strategy,
+            enrollment_filter=payload.enrollment_filter,
+        )
+        _audit_log(
+            db,
+            actor=actor,
+            action="campaign_created",
+            entity_type="campaign",
+            entity_id=created.id,
+        )
+        return _campaign_svc.serialize_campaign(created)
+
+    @admin_v1.get("/campaigns")
+    def list_campaigns_v1(
+        limit: int = Query(default=25, ge=1, le=200),
+        offset: int = Query(default=0, ge=0),
+        db: Session = Depends(get_db),
+    ) -> dict[str, Any]:
+        rows = _campaign_svc.list_campaigns(db, limit=limit, offset=offset)
+        total = db.query(DBCampaign).count()
+        return {
+            "items": [_campaign_svc.serialize_campaign(row) for row in rows],
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+        }
+
+    @admin_v1.get("/campaigns/{campaign_id}")
+    def get_campaign_v1(
+        campaign_id: str,
+        db: Session = Depends(get_db),
+    ) -> dict[str, Any]:
+        row = _campaign_svc.get_campaign_or_404(db, campaign_id)
+        return _campaign_svc.serialize_campaign(row)
+
+    @admin_v1.patch("/campaigns/{campaign_id}")
+    def update_campaign_v1(
+        campaign_id: str,
+        payload: CampaignUpdateRequest,
+        actor: str = "admin",
+        db: Session = Depends(get_db),
+    ) -> dict[str, Any]:
+        updated = _campaign_svc.update_campaign(
+            db,
+            campaign_id,
+            name=payload.name,
+            description=payload.description,
+            status_value=payload.status,
+            sequence_id=payload.sequence_id,
+            channel_strategy=payload.channel_strategy,
+            enrollment_filter=payload.enrollment_filter,
+        )
+        _audit_log(
+            db,
+            actor=actor,
+            action="campaign_updated",
+            entity_type="campaign",
+            entity_id=campaign_id,
+        )
+        return _campaign_svc.serialize_campaign(updated)
+
+    @admin_v1.post("/campaigns/{campaign_id}/activate")
+    def activate_campaign_v1(
+        campaign_id: str,
+        actor: str = "admin",
+        db: Session = Depends(get_db),
+    ) -> dict[str, Any]:
+        updated = _campaign_svc.set_campaign_status(db, campaign_id, "active")
+        _audit_log(
+            db,
+            actor=actor,
+            action="campaign_activated",
+            entity_type="campaign",
+            entity_id=campaign_id,
+        )
+        return _campaign_svc.serialize_campaign(updated)
+
+    @admin_v1.post("/campaigns/{campaign_id}/pause")
+    def pause_campaign_v1(
+        campaign_id: str,
+        actor: str = "admin",
+        db: Session = Depends(get_db),
+    ) -> dict[str, Any]:
+        updated = _campaign_svc.set_campaign_status(db, campaign_id, "paused")
+        _audit_log(
+            db,
+            actor=actor,
+            action="campaign_paused",
+            entity_type="campaign",
+            entity_id=campaign_id,
+        )
+        return _campaign_svc.serialize_campaign(updated)
+
+    @admin_v1.post("/campaigns/{campaign_id}/enroll")
+    def enroll_campaign_v1(
+        campaign_id: str,
+        payload: CampaignEnrollRequest,
+        actor: str = "admin",
+        db: Session = Depends(get_db),
+    ) -> dict[str, Any]:
+        result = _campaign_svc.enroll_campaign_leads(
+            db,
+            campaign_id,
+            lead_ids=payload.lead_ids,
+            filters=payload.filters,
+            max_leads=payload.max_leads,
+        )
+        _audit_log(
+            db,
+            actor=actor,
+            action="campaign_enrolled",
+            entity_type="campaign",
+            entity_id=campaign_id,
+            metadata={"created": result.get("created"), "skipped": result.get("skipped")},
+        )
+        return result
+
+    @admin_v1.get("/campaigns/{campaign_id}/runs")
+    def list_campaign_runs_v1(
+        campaign_id: str,
+        status_filter: str | None = Query(default=None, alias="status"),
+        limit: int = Query(default=50, ge=1, le=200),
+        offset: int = Query(default=0, ge=0),
+        db: Session = Depends(get_db),
+    ) -> dict[str, Any]:
+        rows = _campaign_svc.list_campaign_runs(
+            db,
+            campaign_id,
+            status_filter=status_filter,
+            limit=limit,
+            offset=offset,
+        )
+        total = db.query(DBCampaignRun).filter(DBCampaignRun.campaign_id == campaign_id).count()
+        return {
+            "items": [_campaign_svc.serialize_run(row) for row in rows],
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+        }
+
+    @admin_v1.post("/content/generate")
+    def generate_content_v1(
+        payload: ContentGenerateRequest,
+        actor: str = "admin",
+        db: Session = Depends(get_db),
+    ) -> dict[str, Any]:
+        generated = _content_svc.generate_content(
+            db,
+            lead_id=payload.lead_id,
+            channel=payload.channel,
+            step=payload.step,
+            template_key=payload.template_key,
+            context=payload.context,
+            provider=payload.provider,
+        )
+        _audit_log(
+            db,
+            actor=actor,
+            action="content_generated",
+            entity_type="content_generation",
+            entity_id=generated.id,
+            metadata={"channel": payload.channel, "lead_id": payload.lead_id},
+        )
+        return _content_svc.serialize_content_generation(generated)
+
+    @admin_v1.post("/enrichment/run")
+    def run_enrichment_v1(
+        payload: EnrichmentRunRequest,
+        actor: str = "admin",
+        db: Session = Depends(get_db),
+    ) -> dict[str, Any]:
+        job = _enrichment_svc.run_enrichment(
+            db,
+            query=payload.query,
+            provider=payload.provider,
+            lead_id=payload.lead_id,
+            context=payload.context,
+        )
+        _audit_log(
+            db,
+            actor=actor,
+            action="enrichment_run",
+            entity_type="enrichment_job",
+            entity_id=job.id,
+            metadata={"provider": payload.provider, "lead_id": payload.lead_id},
+        )
+        return _enrichment_svc.serialize_enrichment_job(job)
+
+    @admin_v1.get("/enrichment/{job_id}")
+    def get_enrichment_v1(
+        job_id: str,
+        db: Session = Depends(get_db),
+    ) -> dict[str, Any]:
+        job = _enrichment_svc.get_enrichment_or_404(db, job_id)
+        return _enrichment_svc.serialize_enrichment_job(job)
 
     @admin_v1.get("/analytics")
     def analytics_v1(db: Session = Depends(get_db)) -> dict[str, Any]:
@@ -3759,6 +7481,13 @@ def create_app() -> FastAPI:
     def list_report_schedules_v1(db: Session = Depends(get_db)) -> dict[str, Any]:
         _run_due_report_schedules_payload(db)
         return _list_report_schedules_payload(db)
+
+    @admin_v1.get("/reports/30d")
+    def get_reports_30d_v1(
+        window: str = Query(default="30d"),
+        db: Session = Depends(get_db),
+    ) -> dict[str, Any]:
+        return _build_report_30d_payload(db, window=window)
 
     @admin_v1.post("/reports/schedules")
     def create_report_schedule_v1(

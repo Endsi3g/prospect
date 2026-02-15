@@ -20,6 +20,8 @@ This folder contains project documentation organized by topic.
 ## Operations
 
 - `docs/operations/OPERATIONS_MANUAL.md`: deployment and operations runbook (sanitized).
+- `docs/operations/KOYEB_DEPLOYMENT.md`: backend deployment runbook for Koyeb.
+- `docs/operations/VERCEL_DEPLOYMENT.md`: frontend deployment runbook for Vercel.
 
 ## Playbooks
 

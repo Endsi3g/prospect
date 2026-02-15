@@ -68,3 +68,18 @@ def test_export_csv_projects_with_custom_fields(client, db_session):
     lines = response.text.strip().splitlines()
     assert lines[0] == "id,name,status"
     assert any("project-export,Projet Export,Planning" in line for line in lines[1:])
+
+
+def test_export_csv_systems(client, db_session):
+    _seed_export_data(db_session)
+    response = client.get(
+        "/api/v1/admin/export/csv?entity=systems",
+        auth=("admin", "secret"),
+    )
+    assert response.status_code == 200
+    assert "text/csv" in response.headers["content-type"]
+    assert "attachment; filename=\"systems.csv\"" in response.headers["content-disposition"]
+
+    lines = response.text.strip().splitlines()
+    assert lines[0] == "system_key,system_type,status,item_count,updated_at,details"
+    assert any("admin_settings,settings" in line for line in lines[1:])

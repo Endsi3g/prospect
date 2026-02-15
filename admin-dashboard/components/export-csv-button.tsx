@@ -5,9 +5,9 @@ import { IconFileExport } from "@tabler/icons-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
-import { getApiBaseUrl } from "@/lib/api"
+import { requestApiBlob } from "@/lib/api"
 
-type ExportEntity = "leads" | "tasks" | "projects"
+type ExportEntity = "leads" | "tasks" | "projects" | "systems"
 
 export function ExportCsvButton({
   entity,
@@ -29,14 +29,7 @@ export function ExportCsvButton({
       if (fields && fields.length > 0) {
         params.set("fields", fields.join(","))
       }
-      const response = await fetch(`${getApiBaseUrl()}/api/v1/admin/export/csv?${params.toString()}`, {
-        cache: "no-store",
-      })
-      if (!response.ok) {
-        throw new Error(`Export impossible (${response.status})`)
-      }
-
-      const blob = await response.blob()
+      const blob = await requestApiBlob(`/api/v1/admin/export/csv?${params.toString()}`)
       const objectUrl = window.URL.createObjectURL(blob)
       const link = document.createElement("a")
       link.href = objectUrl

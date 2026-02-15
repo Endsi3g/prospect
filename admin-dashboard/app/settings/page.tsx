@@ -6,6 +6,7 @@ import useSWR from "swr"
 import { toast } from "sonner"
 
 import { AppSidebar } from "@/components/app-sidebar"
+import { ExportCsvButton } from "@/components/export-csv-button"
 import { SiteHeader } from "@/components/site-header"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -261,9 +262,18 @@ export default function SettingsPage() {
         <div className="flex flex-1 flex-col gap-6 p-4 pt-0 md:p-8">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="text-3xl font-bold tracking-tight">Parametres</h2>
-            <Button asChild variant="outline">
-              <Link href="/settings/team">Gerer equipe</Link>
-            </Button>
+            <div className="flex items-center gap-2">
+              <ExportCsvButton entity="systems" label="Export systemes" />
+              <Button asChild variant="outline">
+                <Link href="/systems">Console systemes</Link>
+              </Button>
+              <Button asChild variant="outline">
+                <Link href="/settings/dev">Mode dev</Link>
+              </Button>
+              <Button asChild variant="outline">
+                <Link href="/settings/team">Gerer equipe</Link>
+              </Button>
+            </div>
           </div>
           {error ? (
             <ErrorState title="Impossible de charger les parametres." onRetry={() => void mutate()} />

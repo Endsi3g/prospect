@@ -1,5 +1,6 @@
 "use client"
 
+import * as React from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { IconHelp, IconSearch } from "@tabler/icons-react"
@@ -15,6 +16,9 @@ const TITLES: Record<string, string> = {
   "/tasks": "Taches",
   "/analytics": "Analytique",
   "/projects": "Projets",
+  "/campaigns": "Campagnes",
+  "/research": "Recherche",
+  "/systems": "Systemes",
   "/settings": "Parametres",
   "/settings/team": "Equipe & roles",
   "/help": "Aide",
@@ -29,7 +33,13 @@ const TITLES: Record<string, string> = {
 export function SiteHeader() {
   const pathname = usePathname()
   const { openHelp, openSearch } = useModalSystem()
-  const title = TITLES[pathname] || "Prospect"
+  const title = React.useMemo(() => {
+    if (pathname in TITLES) return TITLES[pathname]
+    if (pathname.startsWith("/leads/")) return "Fiche lead"
+    if (pathname.startsWith("/projects/")) return "Fiche projet"
+    if (pathname.startsWith("/tasks/")) return "Fiche tache"
+    return "Prospect"
+  }, [pathname])
 
   return (
     <header className="flex h-(--header-height) shrink-0 items-center gap-2 border-b transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-(--header-height)">

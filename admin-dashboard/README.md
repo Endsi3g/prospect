@@ -33,6 +33,38 @@ ADMIN_AUTH=admin:change-me
 
 Ces variables sont **server-only** (aucune exposition navigateur).
 
+### Mode mock localhost (fallback auto)
+
+En local, si le backend/proxy est indisponible, le frontend bascule automatiquement sur des donnees mock pour continuer les tests UI (leads, tasks, projects, settings, reports, etc.).
+
+- Optionnel: desactiver ce fallback automatique avec:
+
+```dotenv
+NEXT_PUBLIC_AUTO_MOCK_LOCALHOST=false
+```
+
+- Forcer le mode mock (meme si API disponible):
+
+```dotenv
+NEXT_PUBLIC_USE_MOCK=true
+```
+
+- Choisir le scenario mock par defaut (volume/comportement):
+
+```dotenv
+NEXT_PUBLIC_MOCK_SCENARIO_DEFAULT=balanced
+```
+
+Scenarios disponibles: `balanced`, `empty`, `ops_overload`, `conversion_peak`.
+
+- Override rapide depuis l'URL locale (sans redemarrer):
+
+`http://localhost:3000/leads?mockScenario=ops_overload`
+
+- Selection UI (sans query param):
+
+`/settings/dev` -> choisir le scenario puis `Appliquer scenario` (stocke localement dans le navigateur).
+
 ### Fonctionnalites
 
 - UI en francais

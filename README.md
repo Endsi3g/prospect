@@ -59,9 +59,34 @@ npm run dev
 - Dashboard: `http://localhost:3000`
 - API: `http://localhost:8000`
 
-## Deploiement Vercel (frontend)
+## Deploiement backend (Koyeb)
 
-Le frontend deployable est `admin-dashboard`, avec backend FastAPI externe.
+Le backend FastAPI peut etre deploie sur Koyeb via Git (service Web).
+
+Commande de demarrage:
+
+```text
+uvicorn src.admin.app:create_app --host 0.0.0.0 --port $PORT --factory
+```
+
+Variables minimales backend:
+- `APP_ENV=production`
+- `ADMIN_AUTH_MODE=hybrid`
+- `ADMIN_USERNAME=<secure-user>`
+- `ADMIN_PASSWORD=<secure-password>`
+- `JWT_SECRET=<long-random-secret>`
+- `DATABASE_URL=<managed-postgres-url>`
+- `ADMIN_CORS_ALLOW_ORIGINS=https://<frontend-netlify>,https://<frontend-vercel>`
+
+Healthcheck:
+
+```powershell
+Invoke-RestMethod https://<backend-domain>/healthz
+```
+
+## Deploiement frontend (Vercel)
+
+Le frontend deployable principal est `admin-dashboard`, avec backend FastAPI externe.
 
 ```powershell
 npx vercel --cwd admin-dashboard
@@ -69,7 +94,7 @@ npx vercel --prod --cwd admin-dashboard
 ```
 
 Variables Vercel minimales:
-- `API_BASE_URL=https://<backend-render>`
+- `API_BASE_URL=https://<backend-domain>`
 - `NEXT_PUBLIC_USE_MOCK=false`
 - `PROXY_UPSTREAM_TIMEOUT_MS=20000`
 
@@ -102,6 +127,18 @@ Exemple test cible:
 
 ```powershell
 python -m pytest tests/test_admin_assistant_api.py -v
+```
+
+Contournement Windows (environnement verrouille / erreur `PermissionError` sur `tmpdir`):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/utilities/run_pytest_windows_safe.ps1 -q
+```
+
+Exemple cible:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/utilities/run_pytest_windows_safe.ps1 tests/test_admin_metrics_api.py -q
 ```
 
 ## Scripts utiles

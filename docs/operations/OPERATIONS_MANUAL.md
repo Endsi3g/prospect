@@ -2,6 +2,10 @@
 
 This runbook explains how to configure, deploy, and operate the platform safely.
 
+Provider-specific references:
+- `docs/operations/KOYEB_DEPLOYMENT.md` (backend)
+- `docs/operations/VERCEL_DEPLOYMENT.md` (frontend)
+
 ## 1. System overview
 
 The application is composed of:

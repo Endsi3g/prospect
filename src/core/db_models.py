@@ -90,12 +90,26 @@ class DBTask(Base):
 
     id = Column(String, primary_key=True, index=True)
     title = Column(String)
+    description = Column(String, nullable=True)
     status = Column(String, default="To Do")
     priority = Column(String, default="Medium")
     due_date = Column(DateTime, nullable=True)
     assigned_to = Column(String, default="You")
     lead_id = Column(String, ForeignKey("leads.id"), nullable=True)
+    project_id = Column(String, ForeignKey("projects.id"), nullable=True, index=True)
+    project_name = Column(String, nullable=True)
+    channel = Column(String, default="email", nullable=False, index=True)
+    sequence_step = Column(Integer, default=1, nullable=False)
+    source = Column(String, default="manual", nullable=False, index=True)
+    rule_id = Column(String, nullable=True, index=True)
+    score_snapshot_json = Column(JSON, default=dict, nullable=False)
+    subtasks_json = Column(JSON, default=list, nullable=False)
+    comments_json = Column(JSON, default=list, nullable=False)
+    attachments_json = Column(JSON, default=list, nullable=False)
+    timeline_json = Column(JSON, default=list, nullable=False)
     created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+    closed_at = Column(DateTime, nullable=True)
 
 class DBProject(Base):
     __tablename__ = "projects"
@@ -105,8 +119,31 @@ class DBProject(Base):
     description = Column(String, nullable=True)
     status = Column(String, default="Planning", index=True)
     lead_id = Column(String, ForeignKey("leads.id"), nullable=True)
+    progress_percent = Column(Integer, default=0)
+    budget_total = Column(Float, nullable=True)
+    budget_spent = Column(Float, default=0.0)
+    team_json = Column(JSON, default=list, nullable=False)
+    timeline_json = Column(JSON, default=list, nullable=False)
+    deliverables_json = Column(JSON, default=list, nullable=False)
     due_date = Column(DateTime, nullable=True, index=True)
     created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+
+class DBOpportunity(Base):
+    __tablename__ = "opportunities"
+
+    id = Column(String, primary_key=True, index=True)
+    lead_id = Column(String, ForeignKey("leads.id"), nullable=False, index=True)
+    name = Column(String, nullable=False, index=True)
+    stage = Column(String, nullable=False, default="qualification", index=True)
+    status = Column(String, nullable=False, default="open", index=True)
+    amount = Column(Float, nullable=True)
+    probability = Column(Integer, nullable=False, default=10)
+    assigned_to = Column(String, nullable=False, default="Vous", index=True)
+    expected_close_date = Column(DateTime, nullable=True, index=True)
+    details_json = Column(JSON, default=dict, nullable=False)
+    created_at = Column(DateTime, default=datetime.now, nullable=False, index=True)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
 
 
@@ -361,3 +398,111 @@ class DBAssistantAction(Base):
     executed_at = Column(DateTime, nullable=True)
 
     run = relationship("DBAssistantRun", back_populates="actions")
+
+
+class DBCampaignSequence(Base):
+    __tablename__ = "campaign_sequences"
+
+    id = Column(String, primary_key=True, index=True)
+    name = Column(String, nullable=False, index=True)
+    description = Column(String, nullable=True)
+    status = Column(String, nullable=False, default="draft", index=True)
+    channels_json = Column(JSON, default=list, nullable=False)
+    steps_json = Column(JSON, default=list, nullable=False)
+    created_at = Column(DateTime, default=datetime.now, nullable=False, index=True)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+    campaigns = relationship("DBCampaign", back_populates="sequence")
+
+
+class DBCampaign(Base):
+    __tablename__ = "campaigns"
+
+    id = Column(String, primary_key=True, index=True)
+    name = Column(String, nullable=False, index=True)
+    description = Column(String, nullable=True)
+    status = Column(String, nullable=False, default="draft", index=True)
+    sequence_id = Column(String, ForeignKey("campaign_sequences.id"), nullable=True, index=True)
+    channel_strategy_json = Column(JSON, default=dict, nullable=False)
+    enrollment_filter_json = Column(JSON, default=dict, nullable=False)
+    created_at = Column(DateTime, default=datetime.now, nullable=False, index=True)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+    sequence = relationship("DBCampaignSequence", back_populates="campaigns")
+    enrollments = relationship(
+        "DBCampaignEnrollment",
+        back_populates="campaign",
+        cascade="all, delete-orphan",
+    )
+    runs = relationship(
+        "DBCampaignRun",
+        back_populates="campaign",
+        cascade="all, delete-orphan",
+    )
+
+
+class DBCampaignEnrollment(Base):
+    __tablename__ = "campaign_enrollments"
+
+    id = Column(String, primary_key=True, index=True)
+    campaign_id = Column(String, ForeignKey("campaigns.id"), nullable=False, index=True)
+    lead_id = Column(String, ForeignKey("leads.id"), nullable=False, index=True)
+    status = Column(String, nullable=False, default="active", index=True)
+    current_step_index = Column(Integer, nullable=False, default=0)
+    next_run_at = Column(DateTime, nullable=True, index=True)
+    last_action_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.now, nullable=False)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+    campaign = relationship("DBCampaign", back_populates="enrollments")
+
+
+class DBCampaignRun(Base):
+    __tablename__ = "campaign_runs"
+
+    id = Column(String, primary_key=True, index=True)
+    campaign_id = Column(String, ForeignKey("campaigns.id"), nullable=False, index=True)
+    enrollment_id = Column(String, ForeignKey("campaign_enrollments.id"), nullable=True, index=True)
+    lead_id = Column(String, ForeignKey("leads.id"), nullable=True, index=True)
+    trigger_source = Column(String, nullable=False, default="manual")
+    action_type = Column(String, nullable=False, default="nurture_step")
+    status = Column(String, nullable=False, default="pending", index=True)
+    step_index = Column(Integer, nullable=False, default=0)
+    payload_json = Column(JSON, default=dict, nullable=False)
+    result_json = Column(JSON, default=dict, nullable=False)
+    error_message = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.now, nullable=False, index=True)
+    executed_at = Column(DateTime, nullable=True)
+
+    campaign = relationship("DBCampaign", back_populates="runs")
+
+
+class DBContentGeneration(Base):
+    __tablename__ = "content_generations"
+
+    id = Column(String, primary_key=True, index=True)
+    lead_id = Column(String, ForeignKey("leads.id"), nullable=True, index=True)
+    channel = Column(String, nullable=False, index=True)
+    step = Column(Integer, nullable=False, default=1)
+    template_key = Column(String, nullable=True)
+    provider = Column(String, nullable=False, default="deterministic")
+    prompt_context_json = Column(JSON, default=dict, nullable=False)
+    output_json = Column(JSON, default=dict, nullable=False)
+    variables_used_json = Column(JSON, default=list, nullable=False)
+    confidence = Column(Float, nullable=False, default=0.5)
+    created_at = Column(DateTime, default=datetime.now, nullable=False, index=True)
+
+
+class DBEnrichmentJob(Base):
+    __tablename__ = "enrichment_jobs"
+
+    id = Column(String, primary_key=True, index=True)
+    lead_id = Column(String, ForeignKey("leads.id"), nullable=True, index=True)
+    query = Column(String, nullable=False, index=True)
+    provider = Column(String, nullable=False, default="mock", index=True)
+    status = Column(String, nullable=False, default="pending", index=True)
+    relevance_score = Column(Float, nullable=False, default=0.0)
+    result_json = Column(JSON, default=dict, nullable=False)
+    error_message = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.now, nullable=False, index=True)
+    finished_at = Column(DateTime, nullable=True)

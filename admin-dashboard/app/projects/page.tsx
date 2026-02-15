@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import Link from "next/link"
 import useSWR from "swr"
 import { IconCalendar, IconFolder, IconPencil, IconTrash } from "@tabler/icons-react"
 import { toast } from "sonner"
@@ -185,7 +186,11 @@ export default function ProjectsPage() {
                     <div className="h-1 w-full bg-primary" />
                     <CardHeader className="space-y-2 pb-4">
                       <div className="flex items-start justify-between gap-2">
-                        <CardTitle className="line-clamp-1 text-xl">{project.name}</CardTitle>
+                        <CardTitle className="line-clamp-1 text-xl">
+                          <Link href={`/projects/${project.id}`} className="hover:underline">
+                            {project.name}
+                          </Link>
+                        </CardTitle>
                         <Badge variant="outline">{project.status}</Badge>
                       </div>
                       <p className="line-clamp-2 text-sm text-muted-foreground">
@@ -198,10 +203,12 @@ export default function ProjectsPage() {
                         <span>{formatDateFr(project.due_date)}</span>
                       </div>
                       <div className="flex items-center justify-between border-t pt-3">
-                        <div className="flex items-center gap-2 text-primary">
-                          <IconFolder className="size-4" />
-                          <span className="text-sm font-medium">Projet</span>
-                        </div>
+                        <Button variant="ghost" size="sm" asChild className="text-primary">
+                          <Link href={`/projects/${project.id}`}>
+                            <IconFolder className="size-4" />
+                            Ouvrir
+                          </Link>
+                        </Button>
                         <div className="flex items-center gap-2">
                           <Button variant="ghost" size="icon" onClick={() => editProject(project)}>
                             <IconPencil className="size-4" />

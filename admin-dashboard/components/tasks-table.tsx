@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import { IconDotsVertical, IconFolderUp, IconPencil, IconTrash } from "@tabler/icons-react"
+import Link from "next/link"
 import { toast } from "sonner"
 
 import { useModalSystem } from "@/components/modal-system-provider"
@@ -50,11 +51,32 @@ export type Task = {
   due_date: string | null
   assigned_to: string
   lead_id?: string
+  channel: "email" | "linkedin" | "call"
+  sequence_step: number
+  source: "manual" | "auto-rule" | "assistant"
+  rule_id?: string
+  related_score_snapshot?: Record<string, unknown>
 }
 
 const TASK_STATUSES: Task["status"][] = ["To Do", "In Progress", "Done"]
 const TASK_PRIORITIES: Task["priority"][] = ["Low", "Medium", "High", "Critical"]
 const TASK_STATUS_FILTERS: string[] = ["ALL", ...TASK_STATUSES]
+const TASK_CHANNEL_FILTERS = ["ALL", "email", "linkedin", "call"]
+const TASK_SOURCE_FILTERS = ["ALL", "manual", "auto-rule", "assistant"]
+
+function channelLabel(value: string): string {
+  if (value === "email") return "Email"
+  if (value === "linkedin") return "LinkedIn"
+  if (value === "call") return "Appel"
+  return value
+}
+
+function sourceLabel(value: string): string {
+  if (value === "manual") return "Manuel"
+  if (value === "auto-rule") return "Auto-rule"
+  if (value === "assistant") return "Assistant"
+  return value
+}
 
 function priorityClass(priority: Task["priority"]): string {
   if (priority === "Critical") return "border-red-500 text-red-600"
@@ -89,10 +111,14 @@ export function TasksTable({
   pageSize,
   search,
   status,
+  channel,
+  source,
   sort,
   order,
   onSearchChange,
   onStatusChange,
+  onChannelChange,
+  onSourceChange,
   onPageChange,
   onSortChange,
   onDataChanged,
@@ -103,10 +129,14 @@ export function TasksTable({
   pageSize: number
   search: string
   status: string
+  channel: string
+  source: string
   sort: string
   order: string
   onSearchChange: (value: string) => void
   onStatusChange: (value: string) => void
+  onChannelChange: (value: string) => void
+  onSourceChange: (value: string) => void
   onPageChange: (page: number) => void
   onSortChange: (sort: string, order: string) => void
   onDataChanged?: () => void
@@ -122,6 +152,7 @@ export function TasksTable({
     due_date: "",
     assigned_to: "Vous",
     lead_id: "",
+    channel: "email" as Task["channel"],
   })
   const maxPage = Math.ceil(total / pageSize) || 1
 
@@ -151,6 +182,7 @@ export function TasksTable({
       due_date: toDatetimeLocal(task.due_date),
       assigned_to: task.assigned_to || "Vous",
       lead_id: task.lead_id || "",
+      channel: task.channel,
     })
     setEditOpen(true)
   }
@@ -169,6 +201,7 @@ export function TasksTable({
       due_date: toIsoFromDatetimeLocal(editForm.due_date),
       assigned_to: editForm.assigned_to.trim() || "Vous",
       lead_id: editForm.lead_id.trim() || null,
+      channel: editForm.channel,
     }
     try {
       setEditSubmitting(true)
@@ -230,6 +263,30 @@ export function TasksTable({
               ))}
             </SelectContent>
           </Select>
+          <Select value={channel} onValueChange={onChannelChange}>
+            <SelectTrigger className="w-[160px]">
+              <SelectValue placeholder="Canal" />
+            </SelectTrigger>
+            <SelectContent>
+              {TASK_CHANNEL_FILTERS.map((value) => (
+                <SelectItem key={value} value={value}>
+                  {value === "ALL" ? "Tous canaux" : channelLabel(value)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={source} onValueChange={onSourceChange}>
+            <SelectTrigger className="w-[160px]">
+              <SelectValue placeholder="Source" />
+            </SelectTrigger>
+            <SelectContent>
+              {TASK_SOURCE_FILTERS.map((value) => (
+                <SelectItem key={value} value={value}>
+                  {value === "ALL" ? "Toutes sources" : sourceLabel(value)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
         <p className="text-sm text-muted-foreground">{total} tache(s)</p>
       </div>
@@ -253,6 +310,15 @@ export function TasksTable({
               <TableHead className="cursor-pointer hover:bg-muted/50" onClick={() => handleSort("assigned_to")}>
                 Assigne a <SortIcon column="assigned_to" sort={sort} order={order} />
               </TableHead>
+              <TableHead className="cursor-pointer hover:bg-muted/50" onClick={() => handleSort("channel")}>
+                Canal <SortIcon column="channel" sort={sort} order={order} />
+              </TableHead>
+              <TableHead className="cursor-pointer hover:bg-muted/50" onClick={() => handleSort("source")}>
+                Source <SortIcon column="source" sort={sort} order={order} />
+              </TableHead>
+              <TableHead className="cursor-pointer hover:bg-muted/50" onClick={() => handleSort("sequence_step")}>
+                Etape <SortIcon column="sequence_step" sort={sort} order={order} />
+              </TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
@@ -260,7 +326,12 @@ export function TasksTable({
             {data.map((task) => (
               <TableRow key={task.id}>
                 <TableCell>
-                  <div className="font-medium">{task.title}</div>
+                  <Link
+                    href={`/tasks/${encodeURIComponent(task.id)}`}
+                    className="font-medium text-foreground underline-offset-2 hover:underline"
+                  >
+                    {task.title}
+                  </Link>
                   <div className="text-xs text-muted-foreground">#{task.id}</div>
                 </TableCell>
                 <TableCell>
@@ -275,6 +346,17 @@ export function TasksTable({
                 </TableCell>
                 <TableCell>{formatDateFr(task.due_date || null)}</TableCell>
                 <TableCell>{task.assigned_to}</TableCell>
+                <TableCell>
+                  <Badge variant="outline">{channelLabel(task.channel)}</Badge>
+                </TableCell>
+                <TableCell>
+                  <Badge variant={task.source === "auto-rule" ? "default" : "secondary"}>
+                    {sourceLabel(task.source)}
+                  </Badge>
+                </TableCell>
+                <TableCell>
+                  <span className="text-sm">{task.sequence_step || 1}</span>
+                </TableCell>
                 <TableCell className="text-right">
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
@@ -303,7 +385,7 @@ export function TasksTable({
             ))}
             {data.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="py-8 text-center text-sm text-muted-foreground">
+                <TableCell colSpan={9} className="py-8 text-center text-sm text-muted-foreground">
                   Aucune tache ne correspond a votre recherche.
                 </TableCell>
               </TableRow>
@@ -433,6 +515,27 @@ export function TasksTable({
                     setEditForm((current) => ({ ...current, lead_id: event.target.value }))
                   }
                 />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="task-channel">Canal</Label>
+                <Select
+                  value={editForm.channel}
+                  onValueChange={(value) =>
+                    setEditForm((current) => ({
+                      ...current,
+                      channel: value as Task["channel"],
+                    }))
+                  }
+                >
+                  <SelectTrigger id="task-channel">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="email">Email</SelectItem>
+                    <SelectItem value="linkedin">LinkedIn</SelectItem>
+                    <SelectItem value="call">Appel</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
             <SheetFooter className="mt-6">

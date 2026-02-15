@@ -1,0 +1,165 @@
+# Manuel Opérationelle de Guerre.pdf
+
+- `doc_id`: `manuel-operationelle-de-guerre-aa366af97155`
+- `source_path`: `C:\prospect\prospect\CompagnieDocs\Manuel Opérationelle de Guerre.pdf`
+- `sha256`: `aa366af971550503d1c4b67797cb97b2de23eecee3e01b8154dacac18ca7c7fb`
+- `page_count`: `6`
+- `generated_at`: `2026-02-15T02:47:41.836363+00:00`
+
+## Page 1
+
+MANUEL OPÉRATIONNEL DE GUERRE 
+(MOG) : UPRISING STUDIO 
+Niveau d'Accréditation : Fondateur (Kael Belceus)  
+Mission : Domination du marché "Old Money" (Construction, Droit, Santé) au Québec. 
+Doctrine : Vitesse, Précision, Infrastructure. 
+ 
+🏗️ PHASE 1 : LOGISTIQUE & ARMEMENT (SETUP) 
+Avant de tirer, tu vérifies ton arme. Si ces éléments ne sont pas prêts, tu ne prospectes pas. 
+1.1 Configuration du Navigateur (Chrome "Cockpit") 
+Crée un profil Chrome dédié uniquement à la prospection pour ne pas être distrait par 
+YouTube. 
+• Extension 1 : Wappalyzer (Pour voir si c'est du Wordpress/PHP). 
+• Extension 2 : Loom (Configurée avec micro et caméra par défaut). 
+• Extension 3 : Apollo.io (Pour extraire les emails depuis LinkedIn). 
+• Extension 4 : Meta Pixel Helper (Pour voir s'ils font de la pub Facebook. S'ils paient 
+de la pub vers un site pourri, c'est le CLIENT PARFAIT). 
+1.2 Configuration du Profil 
+• LinkedIn : Photo "Founder" (Check), Bannière Uprising (Check), Titre accrocheur 
+(Check). 
+• Loom : 
+o Mets ta photo de profil dans les réglages Loom (pas de rond gris). 
+o Nomme tes vidéos proprement avant d'envoyer (Ex: "Audit Infrastructure - 
+[Nom Entreprise]" et non "Video 45").
+
+## Page 2
+
+📡 PHASE 2 : ACQUISITION DE CIBLES (RADAR AVANCÉ) 
+On ne cherche pas au hasard. On utilise des algorithmes de recherche. 
+2.1 Les 3 Méthodes de Recherche (Query Strings) 
+Méthode A : La Frappe Locale (Google Maps) 
+• Recherche : "Entrepreneur Général Repentigny", "Avocat Droit Affaires Laval", 
+"Clinique Esthétique Terrebonne". 
+• Filtre : Va directement en page 2, 3 et 4. 
+• Le Signe de Richesse : Regarde les photos "Street View" ou les photos clients. 
+o Gros camions logotés ?    (Ils ont du cash). 
+o Bureaux physiques ?    (Ils paient un loyer). 
+o Site web moche ?      (JACKPOT). 
+Méthode B : Le "Pixel Hunter" (Facebook Library) 
+• Va sur la "Bibliothèque publicitaire Facebook". 
+• Cherche des mots clés : "Rénovation", "Cuisine", "Droit". 
+• Si tu vois une pub active (donc ils dépensent de l'argent) mais que le lien mène vers 
+un site lent/non-mobile... ATTAQUE IMMÉDIATE. C'est le client le plus facile à 
+convertir ("Vous brûlez votre budget pub"). 
+Méthode C : L'Approche "Technology" (BuiltWith) 
+• Cherche les sites qui utilisent "Wordpress" + "Quebec" + "Construction". 
+2.2 Qualification Visuelle (Le "Kill/No-Kill") 
+Tu as le site devant les yeux. Tu as 10 secondes pour décider. 
+•    NO-KILL (Ne contacte pas) : 
+o Site fait par une agence récente (Lien en bas "Fait par Agence X"). 
+o Site ultra-rapide ou déjà sur Webflow/Framer. 
+o Entreprise unipersonnelle sans adresse (Freelance fauché). 
+•        KILL (Contacte immédiatement) : 
+o Copyright en bas de page : "© 2019" (ou avant). 
+o Menu hamburger qui ne marche pas sur mobile.
+
+## Page 3
+
+o Formulaire de contact qui demande trop d'infos ou qui est cassé. 
+o Message "Non Sécurisé" dans l'URL. 
+o Temps de chargement > 3 secondes (L'écran blanc de la mort). 
+ 
+🔫 PHASE 3 : PROTOCOLE D'ENGAGEMENT (SCRIPTS 
+DÉTAILLÉS) 
+Tu ne vends pas. Tu diagnostiques. Tu es le médecin, pas le vendeur de tapis. 
+3.1 Scénario A : Le "Cold DM" LinkedIn (Optimisé) 
+Context : Tu l'as ajouté, il a accepté. Tu attends 24h max. 
+Objet (si InMail) : Infrastructure web de [Nom Entreprise] 
+"Bonjour [Prénom], 
+Je serai bref. J'ai analysé l'infrastructure digitale de [Nom Entreprise] ce matin. 
+Vous avez une excellente réputation sur le terrain, mais votre site actuel (score mobile : 
+42/100) agit comme un frein à main sur votre croissance. 
+Concrètement : il met 4.5 secondes à charger sur iPhone. 60% des visiteurs quittent avant 
+d'avoir vu votre offre. 
+J'ai enregistré une courte vidéo technique (2 min) où je vous montre exactement ce qui 
+bloque et comment on répare ça avec une infrastructure moderne. 
+Je vous envoie le lien ?" 
+3.2 Scénario B : L'Email "Sniper" (Si pas sur LinkedIn) 
+Context : Via Apollo.io. Envoie à l'adresse pro perso, pas info@. 
+Sujet : Problème de chargement sur [https://www.google.com/search?q=UrlDuSite.com] 
+(Mobile) 
+"Bonjour [Prénom],
+
+## Page 4
+
+Je suis Kael, fondateur d'Uprising Studio. 
+Je ne vous contacte pas pour vous vendre du SEO ou de la pub. Je vous écris car j'ai détecté 
+une faille critique sur votre site web actuel. 
+Lorsque l'on accède à votre site via mobile (d'où viennent 80% de vos clients aujourd'hui), 
+le temps de réponse serveur crée une friction qui vous coûte des leads chaque semaine. 
+Plutôt que de vous écrire un long email, j'ai filmé mon écran pour vous montrer le problème 
+en temps réel et la solution. 
+Est-ce que je peux vous envoyer la vidéo (durée : 90 secondes) ? 
+Bien à vous, 
+Kael Belceus Architecte @ Uprising Studio" 
+3.3 Scénario C : La Relance (J+3) - "Le Doute" 
+S'il n'a pas répondu. 
+"[Prénom], 
+Je me permets de remonter ce message. 
+Je ne cherche pas à vous vendre un "relooking". Je parle de sécuriser votre canal 
+d'acquisition principal. Si votre site plante ou ralentit, c'est comme avoir un commercial 
+qui dort au bureau. 
+Voulez-vous voir l'audit vidéo ? C'est gratuit et sans engagement." 
+ 
+🎥 PHASE 4 : L'EXÉCUTION VIDÉO (LOOM CHIRURGICAL) 
+Le client a dit "Oui". Tu as 3 minutes pour changer sa vie. Structure impérative : 
+0:00 - 0:30 : L'Empathie (La Carotte) 
+• Visuel : Sa page d'accueil ou son profil LinkedIn.
+
+## Page 5
+
+• Audio : "Salut [Prénom]. Merci de me laisser faire cet audit. D'abord, bravo pour 
+[Citer un projet précis]. On voit que vous êtes des pros dans le monde physique..." 
+0:30 - 1:30 : La Douleur (Le Bâton) 
+• Visuel : Bascule sur Google PageSpeed Insights (déjà chargé avec son URL). 
+• Audio : "...Cependant, dans le monde digital, c'est une autre histoire. Regardez ce 
+chiffre rouge. Google pénalise votre site. Mais pire : un client sur mobile (montre la 
+vue mobile via Inspecteur Chrome) doit attendre 4 secondes. En 2026, personne 
+n'attend. Ils vont chez [Concurrent X]." 
+1:30 - 2:30 : La Vision (Le Futur) 
+• Visuel : Bascule sur une démo Framer fluide ou ton portfolio. 
+• Audio : "Voici l'standard que nous déployons chez Uprising. Pas de Wordpress. Pas 
+de maintenance. Juste de la performance brute. On clique, c'est instantané. C'est 
+ça qui bâtit la confiance." 
+2:30 - 3:00 : Le Call to Action (La Fermeture) 
+• Visuel : Ta caméra en gros plan ou retour sur son site. 
+• Audio : "Je ne suis pas une agence généraliste. Je construis des infrastructures de 
+guerre. Si vous voulez qu'on règle ce problème définitivement, répondez 
+simplement à ce message et on planifie 15 min pour discuter stratégie. À bientôt." 
+ 
+🛡️ PHASE 5 : GESTION DES OBJECTIONS (CONTRE-
+MESURES) 
+Prépare-toi à entendre ça. Ne panique pas. 
+Objection 1 : "On a déjà une agence / un webmaster." 
+• Réponse : "Je m'en doutais. Mais si votre webmaster était proactif, je n'aurais pas 
+trouvé ces erreurs critiques aujourd'hui. Mon but n'est pas de le remplacer, mais de 
+vous montrer ce qu'il a raté. Regardez la vidéo, jugez par vous-même." 
+Objection 2 : "C'est trop cher / On n'a pas de budget."
+
+## Page 6
+
+• Réponse : "Je comprends. Mais un site qui ne convertit pas vous coûte plus cher 
+chaque mois en clients perdus que le prix de mes services. Ce n'est pas une 
+dépense, c'est une réparation de fuite de revenus." 
+Objection 3 : "Je n'ai pas le temps." 
+• Réponse : "C'est exactement pour ça que je vous propose mon approche. Je ne vous 
+demande pas de réunions interminables. Je gère l'infrastructure, vous gérez le 
+business. Regardez juste la vidéo de 2 min." 
+ 
+🧠 MINDSET DU COMMANDANT (RÈGLES D'OR) 
+1. Détachement émotionnel : Tu vas te prendre des "Non", des "Stop", des 
+"Désabonne-moi". C'est normal. C'est le bruit du marché. Ignore et avance. 
+2. La Loi du Nombre : Si tu envoies 2 messages, tu auras 0 client. Si tu en envoies 100, 
+tu auras 3 clients. C'est mathématique. 
+3. Suivi Obsessionnel : L'argent est dans la relance. La plupart des ventes se font au 
+4ème message. N'abandonne pas au premier silence
