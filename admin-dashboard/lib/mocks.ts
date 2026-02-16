@@ -1206,6 +1206,7 @@ function handleJson(path: string, init?: RequestInit): unknown {
   const state = stateFor(url)
 
   if (pathname === "/api/v1/admin/auth/login" && method === "POST") return { ok: true, username: String(body.username || "admin") }
+  if (pathname === "/api/v1/admin/auth/signup" && method === "POST") return { ok: true, username: String(body.email || "demo@example.com") }
   if (pathname === "/api/v1/admin/auth/refresh" && method === "POST") return { ok: true }
   if (pathname === "/api/v1/admin/stats" && method === "GET") return stats(state)
   if (pathname === "/api/v1/admin/analytics" && method === "GET") {

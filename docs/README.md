@@ -28,6 +28,11 @@ This folder contains project documentation organized by topic.
 - `docs/playbooks/AUDIT_PLAYBOOK.md`
 - `docs/playbooks/ELITE_SALES_MANUAL.md`
 
+## Guides
+
+- `docs/guides/GUIDE_VALEUR_BUSINESS.md`: business case, impacts, KPI et ROI.
+- `docs/guides/GUIDE_UTILISATION_PERFORMANCE.md`: mode d'emploi operationnel pour performance quotidienne et hebdo.
+
 ## Notes
 
 - `docs/COMPTE_RENDU_CHANGEMENTS_2026-02-13.md`: change report snapshot.

@@ -222,6 +222,8 @@ class DBAdminUser(Base):
     id = Column(String, primary_key=True, index=True)
     email = Column(String, unique=True, nullable=False, index=True)
     display_name = Column(String, nullable=True)
+    password_hash = Column(String, nullable=True)
+    password_updated_at = Column(DateTime, nullable=True)
     status = Column(String, nullable=False, default="active", index=True)
     created_at = Column(DateTime, default=datetime.now)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)

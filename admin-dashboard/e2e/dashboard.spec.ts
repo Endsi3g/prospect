@@ -3,20 +3,19 @@
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
     window.localStorage.removeItem("prospect:locale")
+    window.localStorage.setItem("prospect:forceMock", "true")
   })
+  await page.goto("/demo")
+  await page.waitForURL("**/dashboard")
 })
 
 test("dashboard charge avec metriques visibles", async ({ page }) => {
-  await page.goto("/dashboard")
-
   await expect(page.getByRole("heading", { name: "Tableau de bord" })).toBeVisible()
   await expect(page.getByText("Leads sourcés")).toBeVisible()
   await expect(page.getByText("Activité pipeline")).toBeVisible()
 })
 
 test("switch locale FR vers EN persiste", async ({ page }) => {
-  await page.goto("/dashboard")
-
   await expect(page.getByText("Leads sourcés")).toBeVisible()
 
   await page.getByRole("button", { name: "Basculer la langue" }).click()

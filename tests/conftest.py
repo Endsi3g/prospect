@@ -32,6 +32,7 @@ def client(db_session, monkeypatch):
     monkeypatch.setenv("ADMIN_AUTH_MODE", "hybrid")
     monkeypatch.setenv("JWT_SECRET", "test-jwt-secret")
     monkeypatch.setenv("AUTH_COOKIE_SECURE", "false")
+    monkeypatch.setenv("APP_ENCRYPTION_KEY", "UsC5jE10lKM1nWQihuyqLpifqarK3WftO0ombGi9HzE=")
 
     def override_get_db():
         try:

@@ -96,6 +96,10 @@ def ensure_sqlite_schema_compatibility(engine) -> None:
         "value_json": "TEXT NOT NULL DEFAULT '{}'",
         "updated_at": "TIMESTAMP",
     }
+    required_admin_user_columns = {
+        "password_hash": "TEXT",
+        "password_updated_at": "TIMESTAMP",
+    }
 
     with engine.begin() as connection:
         lead_columns = _get_table_columns(connection, "leads")
@@ -339,6 +343,8 @@ def ensure_sqlite_schema_compatibility(engine) -> None:
                     id TEXT PRIMARY KEY,
                     email TEXT UNIQUE NOT NULL,
                     display_name TEXT,
+                    password_hash TEXT,
+                    password_updated_at TIMESTAMP,
                     status TEXT NOT NULL DEFAULT 'active',
                     created_at TIMESTAMP,
                     updated_at TIMESTAMP
@@ -346,6 +352,14 @@ def ensure_sqlite_schema_compatibility(engine) -> None:
                 """
             )
         )
+        admin_user_columns = _get_table_columns(connection, "admin_users")
+        for column_name, column_type in required_admin_user_columns.items():
+            if column_name not in admin_user_columns:
+                connection.execute(
+                    text(
+                        f"ALTER TABLE admin_users ADD COLUMN {column_name} {column_type}"
+                    )
+                )
         connection.execute(
             text(
                 """

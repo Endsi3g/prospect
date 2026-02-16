@@ -75,6 +75,7 @@ from .diagnostics_service import (
 )
 from .import_service import commit_csv_import, preview_csv_import
 from .research_service import run_web_research
+from . import secrets_manager as _sec_svc
 from .stats_service import compute_core_funnel_stats, list_leads
 
 
@@ -93,6 +94,7 @@ DEFAULT_AUTH_COOKIE_SECURE = "auto"
 ACCESS_TOKEN_COOKIE_NAME = "admin_access_token"
 REFRESH_TOKEN_COOKIE_NAME = "admin_refresh_token"
 JWT_ALGORITHM = "HS256"
+PASSWORD_HASH_ITERATIONS = 260_000
 
 if hasattr(status, "HTTP_422_UNPROCESSABLE_CONTENT"):
     HTTP_422_STATUS = status.HTTP_422_UNPROCESSABLE_CONTENT
@@ -647,6 +649,11 @@ class AdminIntegrationsPayload(BaseModel):
     providers: dict[str, AdminIntegrationItemPayload] = Field(default_factory=dict)
 
 
+class AdminSecretUpsertPayload(BaseModel):
+    key: str = Field(min_length=1)
+    value: str = Field(min_length=1)
+
+
 class AdminAccountPayload(BaseModel):
     full_name: str = ""
     email: EmailStr
@@ -798,6 +805,12 @@ class AdminAuthLoginRequest(BaseModel):
     password: str = Field(min_length=1)
 
 
+class AdminAuthSignupRequest(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=8, max_length=256)
+    display_name: str | None = Field(default=None, max_length=120)
+
+
 def _is_production() -> bool:
     env_name = (
         os.getenv("APP_ENV")
@@ -894,6 +907,75 @@ def _is_valid_admin_credentials(username: str, password: str) -> bool:
         hmac.compare_digest(username, expected_username)
         and hmac.compare_digest(password, expected_password)
     )
+
+
+def _normalize_admin_email(value: str) -> str:
+    return value.strip().lower()
+
+
+def _hash_admin_password(password: str) -> str:
+    salt = secrets.token_bytes(16)
+    digest = hashlib.pbkdf2_hmac(
+        "sha256",
+        password.encode("utf-8"),
+        salt,
+        PASSWORD_HASH_ITERATIONS,
+    )
+    return (
+        f"pbkdf2_sha256${PASSWORD_HASH_ITERATIONS}"
+        f"${_base64url_encode(salt)}${_base64url_encode(digest)}"
+    )
+
+
+def _verify_admin_password(password: str, stored_hash: str | None) -> bool:
+    if not stored_hash:
+        return False
+    try:
+        algorithm, iterations_raw, salt_raw, digest_raw = stored_hash.split("$", 3)
+        if algorithm != "pbkdf2_sha256":
+            return False
+        iterations = int(iterations_raw)
+        if iterations <= 0:
+            return False
+        salt = _base64url_decode(salt_raw)
+        expected_digest = _base64url_decode(digest_raw)
+    except Exception:
+        return False
+
+    computed = hashlib.pbkdf2_hmac(
+        "sha256",
+        password.encode("utf-8"),
+        salt,
+        iterations,
+    )
+    return hmac.compare_digest(computed, expected_digest)
+
+
+def _resolve_db_admin_subject(db: Session, username: str, password: str) -> str | None:
+    normalized_email = _normalize_admin_email(username)
+    if not normalized_email:
+        return None
+    user = (
+        db.query(DBAdminUser)
+        .filter(func.lower(DBAdminUser.email) == normalized_email)
+        .first()
+    )
+    if not user:
+        return None
+    if user.status != "active":
+        return None
+    if not _verify_admin_password(password, user.password_hash):
+        return None
+    return user.email
+
+
+def _resolve_admin_subject(db: Session, username: str, password: str) -> str | None:
+    candidate = username.strip()
+    if not candidate:
+        return None
+    if _is_valid_admin_credentials(candidate, password):
+        return candidate
+    return _resolve_db_admin_subject(db, candidate, password)
 
 
 def _base64url_encode(raw: bytes) -> str:
@@ -1201,8 +1283,9 @@ def require_admin(request: Request, db: Session = Depends(get_db)) -> str:
         credentials = _extract_basic_credentials(request)
         if credentials:
             username, password = credentials
-            if _is_valid_admin_credentials(username, password):
-                return username
+            subject = _resolve_admin_subject(db, username, password)
+            if subject:
+                return subject
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid admin credentials.",
@@ -4792,7 +4875,19 @@ def _default_integrations_payload() -> dict[str, dict[str, Any]]:
     return providers
 
 
-def _list_integrations_payload(db: Session) -> dict[str, Any]:
+def _list_integrations_payload(
+    db: Session,
+    *,
+    include_runtime_secrets: bool = False,
+) -> dict[str, Any]:
+    try:
+        _sec_svc.migrate_plaintext_integration_secrets_if_needed(db)
+    except _sec_svc.SecretsManagerError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(exc),
+        ) from exc
+
     rows = db.query(DBIntegrationConfig).order_by(DBIntegrationConfig.key.asc()).all()
     providers = _default_integrations_payload()
     for row in rows:
@@ -4813,7 +4908,13 @@ def _list_integrations_payload(db: Session) -> dict[str, Any]:
         current_config = current.get("config") if isinstance(current.get("config"), dict) else {}
         row_config = row.config_json if isinstance(row.config_json, dict) else {}
         current["enabled"] = bool(row.enabled)
-        current["config"] = {**current_config, **row_config}
+        merged_config = {**current_config, **row_config}
+        current["config"] = _sec_svc.apply_integration_secret_fields(
+            db=db,
+            provider_key=key,
+            config=merged_config,
+            include_runtime_values=include_runtime_secrets,
+        )
         current["updated_at"] = row.updated_at.isoformat() if row.updated_at else None
         providers[key] = current
     ordered = {key: providers[key] for key in sorted(providers.keys())}
@@ -4826,24 +4927,69 @@ def _save_integrations_payload(
     *,
     actor: str,
 ) -> dict[str, Any]:
+    try:
+        _sec_svc.migrate_plaintext_integration_secrets_if_needed(db)
+    except _sec_svc.SecretsManagerError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(exc),
+        ) from exc
+
+    configured_providers: list[str] = []
+    secret_updates: dict[str, str] = {}
+
     for key, value in payload.providers.items():
         clean_key = key.strip().lower()
         if not clean_key:
             continue
+        configured_providers.append(clean_key)
         row = db.query(DBIntegrationConfig).filter(DBIntegrationConfig.key == clean_key).first()
         if not row:
             row = DBIntegrationConfig(key=clean_key)
             db.add(row)
         row.enabled = bool(value.enabled)
-        row.config_json = value.config or {}
+        clean_config, extracted_secrets = _sec_svc.sanitize_integration_config(
+            provider_key=clean_key,
+            config=value.config or {},
+        )
+        row.config_json = clean_config
+        for secret_key, secret_value in extracted_secrets.items():
+            if not secret_value:
+                continue
+            secret_updates[secret_key] = secret_value
 
-    db.commit()
+    try:
+        if secret_updates:
+            _sec_svc.upsert_many_secrets(
+                db,
+                secrets_payload=secret_updates,
+                actor=actor,
+            )
+        else:
+            db.commit()
+    except _sec_svc.SecretsManagerError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(exc),
+        ) from exc
+    except SQLAlchemyError as exc:
+        db.rollback()
+        logger.exception("Failed to persist integrations.", extra={"error": str(exc)})
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to save integrations.",
+        ) from exc
+
     _audit_log(
         db,
         actor=actor,
         action="integrations_updated",
         entity_type="integration",
-        metadata={"providers": sorted(payload.providers.keys())},
+        metadata={
+            "providers": sorted(configured_providers),
+            "secret_keys": sorted(secret_updates.keys()),
+        },
     )
     return _list_integrations_payload(db)
 
@@ -4855,7 +5001,7 @@ def _web_research_payload(
     provider: str,
     limit: int,
 ) -> dict[str, Any]:
-    integrations = _list_integrations_payload(db).get("providers", {})
+    integrations = _list_integrations_payload(db, include_runtime_secrets=True).get("providers", {})
     return run_web_research(
         query=query,
         limit=limit,
@@ -6339,7 +6485,8 @@ def create_app() -> FastAPI:
         db: Session = Depends(get_db),
     ) -> Response:
         username = payload.username.strip()
-        if not _is_valid_admin_credentials(username, payload.password):
+        subject = _resolve_admin_subject(db, username, payload.password)
+        if not subject:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid admin credentials.",
@@ -6350,12 +6497,12 @@ def create_app() -> FastAPI:
         try:
             session = _create_refresh_session(
                 db,
-                username=username,
+                username=subject,
                 refresh_token=refresh_token,
                 request=request,
             )
             access_token, access_expires_at = _create_access_token(
-                username=username,
+                username=subject,
                 session_id=session.id,
             )
             db.commit()
@@ -6370,7 +6517,80 @@ def create_app() -> FastAPI:
         response = JSONResponse(
             {
                 "ok": True,
-                "username": username,
+                "username": subject,
+                "auth_mode": _get_admin_auth_mode(),
+                "access_expires_at": access_expires_at.isoformat(),
+                "refresh_expires_at": session.expires_at.isoformat(),
+            }
+        )
+        _set_auth_cookies(
+            response,
+            access_token=access_token,
+            refresh_token=refresh_token,
+            access_expires_at=access_expires_at,
+            refresh_expires_at=session.expires_at,
+        )
+        return response
+
+    @auth_v1.post("/signup")
+    def signup_admin_v1(
+        payload: AdminAuthSignupRequest,
+        request: Request,
+        db: Session = Depends(get_db),
+    ) -> Response:
+        normalized_email = _normalize_admin_email(str(payload.email))
+        existing = (
+            db.query(DBAdminUser)
+            .filter(func.lower(DBAdminUser.email) == normalized_email)
+            .first()
+        )
+        if existing:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"User already exists for email {normalized_email}.",
+            )
+
+        _ensure_default_roles(db)
+        now = datetime.utcnow()
+        user = DBAdminUser(
+            id=str(uuid.uuid4()),
+            email=normalized_email,
+            display_name=(payload.display_name or "").strip() or None,
+            password_hash=_hash_admin_password(payload.password),
+            password_updated_at=now,
+            status="active",
+            created_at=now,
+            updated_at=now,
+        )
+        refresh_token = secrets.token_urlsafe(48)
+
+        try:
+            db.add(user)
+            db.flush()
+            _upsert_user_roles(db, user, ["sales"])
+            session = _create_refresh_session(
+                db,
+                username=user.email,
+                refresh_token=refresh_token,
+                request=request,
+            )
+            access_token, access_expires_at = _create_access_token(
+                username=user.email,
+                session_id=session.id,
+            )
+            db.commit()
+        except SQLAlchemyError as exc:
+            db.rollback()
+            logger.exception("Failed to create admin signup session.", extra={"error": str(exc)})
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Unable to create account.",
+            ) from exc
+
+        response = JSONResponse(
+            {
+                "ok": True,
+                "username": user.email,
                 "auth_mode": _get_admin_auth_mode(),
                 "access_expires_at": access_expires_at.isoformat(),
                 "refresh_expires_at": session.expires_at.isoformat(),
@@ -7736,7 +7956,7 @@ def create_app() -> FastAPI:
     ) -> dict[str, Any]:
         provider_config: dict[str, Any] | None = None
         if (payload.provider or "").strip().lower() == "ollama":
-            integrations = _list_integrations_payload(db).get("providers", {})
+            integrations = _list_integrations_payload(db, include_runtime_secrets=True).get("providers", {})
             ollama_entry = integrations.get("ollama", {}) if isinstance(integrations, dict) else {}
             if isinstance(ollama_entry, dict) and not bool(ollama_entry.get("enabled")):
                 raise HTTPException(
@@ -8116,6 +8336,80 @@ def create_app() -> FastAPI:
             headers={"Content-Disposition": f'attachment; filename="{file_name}"'},
         )
 
+    @admin_v1.get("/secrets/schema")
+    def get_secrets_schema_v1() -> dict[str, Any]:
+        return _sec_svc.get_secret_schema()
+
+    @admin_v1.get("/secrets")
+    def list_secrets_v1(db: Session = Depends(get_db)) -> dict[str, Any]:
+        try:
+            _sec_svc.migrate_plaintext_integration_secrets_if_needed(db)
+            return _sec_svc.list_secret_states(db)
+        except _sec_svc.SecretsManagerError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=str(exc),
+            ) from exc
+
+    @admin_v1.put("/secrets")
+    def upsert_secret_v1(
+        payload: AdminSecretUpsertPayload,
+        actor: str = "admin",
+        db: Session = Depends(get_db),
+    ) -> dict[str, Any]:
+        normalized_key = payload.key.strip()
+        try:
+            result = _sec_svc.upsert_secret(
+                db,
+                key=normalized_key,
+                value=payload.value,
+                actor=actor,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        except _sec_svc.SecretsManagerError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=str(exc),
+            ) from exc
+        _audit_log(
+            db,
+            actor=actor,
+            action="secret_upserted",
+            entity_type="secret",
+            entity_id=normalized_key,
+        )
+        return result
+
+    @admin_v1.delete("/secrets/{key}")
+    def delete_secret_v1(
+        key: str,
+        actor: str = "admin",
+        db: Session = Depends(get_db),
+    ) -> dict[str, Any]:
+        normalized_key = key.strip()
+        try:
+            result = _sec_svc.delete_secret(
+                db,
+                key=normalized_key,
+                actor=actor,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        except _sec_svc.SecretsManagerError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=str(exc),
+            ) from exc
+        _audit_log(
+            db,
+            actor=actor,
+            action="secret_deleted",
+            entity_type="secret",
+            entity_id=normalized_key,
+        )
+        return result
+
     @admin_v1.get("/integrations")
     def integrations_v1(db: Session = Depends(get_db)) -> dict[str, Any]:
         return _list_integrations_payload(db)
@@ -8284,27 +8578,19 @@ def create_app() -> FastAPI:
     def research_query_v1(
         payload: ResearchRequest,
         username: str = Depends(require_admin),
+        db: Session = Depends(get_db),
     ) -> Response:
         """Run a web search using the specified provider (default: Perplexity)."""
         try:
+            provider_configs = _list_integrations_payload(
+                db,
+                include_runtime_secrets=True,
+            ).get("providers", {})
             results = run_web_research(
                 query=payload.query,
                 limit=payload.limit,
                 provider_selector=payload.provider,
-                provider_configs={
-                    "perplexity": {"enabled": True},
-                    "duckduckgo": {"enabled": True},
-                    "firecrawl": {"enabled": True},
-                    "ollama": {
-                        "enabled": True,
-                        "config": {
-                            "api_base_url": os.getenv("OLLAMA_API_BASE_URL", ""),
-                            "api_key_env": "OLLAMA_API_KEY",
-                            "model_research": os.getenv("OLLAMA_MODEL_RESEARCH", "llama3.1:8b-instruct"),
-                            "timeout_seconds": os.getenv("OLLAMA_TIMEOUT_SECONDS", "25"),
-                        },
-                    },
-                },
+                provider_configs=provider_configs,
             )
             return JSONResponse(results)
         except Exception as exc:
@@ -8318,7 +8604,7 @@ def create_app() -> FastAPI:
         admin_user: str = Depends(require_admin),
     ) -> dict:
         _check_prospect_enabled(db)
-        integrations_payload = _list_integrations_payload(db).get("providers", {})
+        integrations_payload = _list_integrations_payload(db, include_runtime_secrets=True).get("providers", {})
         ollama_entry = integrations_payload.get("ollama", {}) if isinstance(integrations_payload, dict) else {}
         ollama_config = (
             ollama_entry.get("config")

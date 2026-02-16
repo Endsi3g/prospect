@@ -12,20 +12,22 @@ import { Input } from "@/components/ui/input"
 import { requestApi } from "@/lib/api"
 import { useI18n } from "@/lib/i18n"
 
-type LoginResponse = {
+type SignupResponse = {
   ok: boolean
   username: string
 }
 
-export function LoginForm({
+export function CreateAccountForm({
   className,
   ...props
 }: React.ComponentProps<"form">) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { messages } = useI18n()
-  const [username, setUsername] = React.useState("")
+  const [email, setEmail] = React.useState("")
+  const [displayName, setDisplayName] = React.useState("")
   const [password, setPassword] = React.useState("")
+  const [confirmPassword, setConfirmPassword] = React.useState("")
   const [submitting, setSubmitting] = React.useState(false)
   const nextPath = React.useMemo(() => {
     const raw = searchParams.get("next") || ""
@@ -48,29 +50,39 @@ export function LoginForm({
 
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    if (password.length < 8) {
+      toast.error(messages.auth.createAccount.passwordTooShort)
+      return
+    }
+    if (password !== confirmPassword) {
+      toast.error(messages.auth.createAccount.passwordMismatch)
+      return
+    }
+
     try {
       setSubmitting(true)
-      const payload = await requestApi<LoginResponse>(
-        "/api/v1/admin/auth/login",
+      const payload = await requestApi<SignupResponse>(
+        "/api/v1/admin/auth/signup",
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ username, password }),
+          body: JSON.stringify({
+            email,
+            password,
+            display_name: displayName.trim() || undefined,
+          }),
         },
         { skipAuthRetry: true },
       )
       if (payload.ok) {
-        toast.success(messages.auth.login.successToast)
+        toast.success(messages.auth.createAccount.successToast)
         redirectAfterAuth(nextPath)
       } else {
-        toast.error(
-          (payload as unknown as { message?: string }).message ||
-            messages.auth.login.invalidCredentials,
-        )
+        toast.error(messages.auth.createAccount.genericError)
       }
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : messages.auth.login.genericError,
+        error instanceof Error ? error.message : messages.auth.createAccount.genericError,
       )
     } finally {
       setSubmitting(false)
@@ -85,47 +97,64 @@ export function LoginForm({
     >
       <FieldGroup>
         <div className="flex flex-col items-center gap-1 text-center">
-          <h1 className="text-2xl font-bold">{messages.auth.login.title}</h1>
+          <h1 className="text-2xl font-bold">{messages.auth.createAccount.title}</h1>
           <p className="text-muted-foreground text-sm text-balance">
-            {messages.auth.login.description}
+            {messages.auth.createAccount.description}
           </p>
         </div>
         <Field>
-          <FieldLabel htmlFor="username">
-            {messages.auth.login.usernameLabel}
-          </FieldLabel>
+          <FieldLabel htmlFor="email">{messages.auth.createAccount.emailLabel}</FieldLabel>
           <Input
-            id="username"
-            type="text"
-            value={username}
-            onChange={(event) => setUsername(event.target.value)}
-            autoComplete="username"
+            id="email"
+            type="email"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            autoComplete="email"
             required
           />
         </Field>
         <Field>
-          <FieldLabel htmlFor="password">
-            {messages.auth.login.passwordLabel}
-          </FieldLabel>
+          <FieldLabel htmlFor="displayName">{messages.auth.createAccount.displayNameLabel}</FieldLabel>
+          <Input
+            id="displayName"
+            type="text"
+            value={displayName}
+            onChange={(event) => setDisplayName(event.target.value)}
+            autoComplete="name"
+          />
+        </Field>
+        <Field>
+          <FieldLabel htmlFor="password">{messages.auth.createAccount.passwordLabel}</FieldLabel>
           <Input
             id="password"
             type="password"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
-            autoComplete="current-password"
+            autoComplete="new-password"
+            required
+          />
+        </Field>
+        <Field>
+          <FieldLabel htmlFor="confirmPassword">{messages.auth.createAccount.confirmPasswordLabel}</FieldLabel>
+          <Input
+            id="confirmPassword"
+            type="password"
+            value={confirmPassword}
+            onChange={(event) => setConfirmPassword(event.target.value)}
+            autoComplete="new-password"
             required
           />
         </Field>
         <Field>
           <Button className="w-full" type="submit" disabled={submitting}>
             {submitting
-              ? messages.auth.login.submitting
-              : messages.auth.login.submit}
+              ? messages.auth.createAccount.submitting
+              : messages.auth.createAccount.submit}
           </Button>
         </Field>
         <p className="text-center text-sm text-muted-foreground">
-          <Link className="underline underline-offset-4" href="/create-account">
-            {messages.auth.login.createAccountCta}
+          <Link className="underline underline-offset-4" href="/login">
+            {messages.auth.createAccount.loginCta}
           </Link>
         </p>
       </FieldGroup>

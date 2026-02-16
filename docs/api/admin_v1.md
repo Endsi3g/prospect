@@ -107,6 +107,10 @@ Error envelope (all admin/API v1 errors):
 - `GET /api/v1/admin/analytics`
 - `GET /api/v1/admin/settings`
 - `PUT /api/v1/admin/settings`
+- `GET /api/v1/admin/secrets/schema`
+- `GET /api/v1/admin/secrets`
+- `PUT /api/v1/admin/secrets`
+- `DELETE /api/v1/admin/secrets/{key}`
 - `GET /api/v1/admin/search?q=...&limit=...`
 - `GET /api/v1/admin/research/web?q=...&provider=auto&limit=8`
   - research providers: `auto`, `duckduckgo`, `perplexity`, `firecrawl`, `ollama`
