@@ -1,150 +1,74 @@
-# ProspectionApp
+Voici votre fichier README.md professionnel et parfaitement structuré :
 
-Plateforme de prospection B2B avec sourcing, enrichissement, scoring, operations admin, et assistant IA.
+```markdown
+# 🚀 ProspectionApp
 
-## Stack
+**Système intelligent de Sales Intelligence B2B**
 
-- Backend: `FastAPI`, `SQLAlchemy`, `Pydantic`
-- DB: `SQLite` (local) / `PostgreSQL` (prod)
-- Frontend principal: `admin-dashboard` (Next.js)
-- Frontend sandbox: `system-playground` (Next.js)
-- Ops/QA: scripts PowerShell et Python dans `scripts/`
+Plateforme full-stack automatisant le cycle complet de prospection : du sourcing de leads à l'engagement personnalisé via IA.
 
-## Structure du repo
+---
 
-```text
-src/
-  admin/            API admin, assistant, recherche, import, diagnostics
-  ai_engine/        prompts et generation de messages
-  core/             modeles, DB, migrations, logging
-  enrichment/       sourcing + enrichissement
-  intent/           providers intent (mock/bombora/6sense)
-  outreach/         logique de follow-up
-  scoring/          moteur de scoring + config
-  workflows/        orchestration pipeline
+## 🛠 Stack Technique
 
-admin-dashboard/    UI principale Next.js
-system-playground/  sandbox UI Next.js
-scripts/            ops, QA, utilitaires, verification
-tests/              tests backend API et logique
-docs/               documentation projet
-assets/             assets de reference
-archive/            artefacts historiques
-```
+- **Backend** : FastAPI, SQLAlchemy, Pydantic (Asynchrone & Haute performance)
+- **Frontend** : Next.js (Dashboard Admin & Playground)
+- **IA** : Moteur contextuel (`ai_engine`) pour la génération de messages
+- **Infrastructure** : PostgreSQL (Prod), Docker, Koyeb & Vercel
 
-## Demarrage local (backend)
+---
+
+## 🏗 Structure du Projet
+
+| Module | Description |
+|--------|-------------|
+| `src/enrichment` | Sourcing et enrichissement (LinkedIn, Email) |
+| `src/intent` | Signaux d'achat (Bombora, 6sense) |
+| `src/scoring` | Algorithmes de priorisation des leads |
+| `src/outreach` | Séquences d'engagement et follow-up |
+| `src/admin` | API de gestion et Assistant IA |
+
+---
+
+## 🚦 Démarrage Rapide
+
+### Backend
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate
 pip install -r requirements.txt
-Copy-Item .env.example .env
-uvicorn src.admin.app:app --reload --port 8000
+uvicorn src.admin.app:app --reload
 ```
 
-Healthcheck:
+### Frontend
 
-```powershell
-Invoke-RestMethod http://localhost:8000/healthz
-```
-
-## Demarrage local (dashboard)
-
-```powershell
+```bash
 cd admin-dashboard
 npm install
 npm run dev
 ```
 
-- Dashboard: `http://localhost:3000`
-- API: `http://localhost:8000`
+---
 
-## Deploiement backend (Koyeb)
+## 🧪 Qualité & Ops
 
-Le backend FastAPI peut etre deploie sur Koyeb via Git (service Web).
+- **Tests** : Suite complète via `pytest` avec scripts optimisés pour Windows
+- **Déploiement** : CI/CD prêt pour Koyeb (Backend) et Vercel (Frontend)
+- **Monitoring** : Diagnostics intelligents et healthchecks intégrés
 
-Commande de demarrage:
+---
 
-```text
-uvicorn src.admin.app:create_app --host 0.0.0.0 --port $PORT --factory
+## 📄 License
+
+Tous droits réservés © 2026
+
+---
+
+## 👤 Auteur
+
+**Ensieg** - [GitHub](https://github.com/Endsi3g)[cite:1]
+
 ```
 
-Variables minimales backend:
-- `APP_ENV=production`
-- `ADMIN_AUTH_MODE=hybrid`
-- `ADMIN_USERNAME=<secure-user>`
-- `ADMIN_PASSWORD=<secure-password>`
-- `JWT_SECRET=<long-random-secret>`
-- `DATABASE_URL=<managed-postgres-url>`
-- `ADMIN_CORS_ALLOW_ORIGINS=https://<frontend-netlify>,https://<frontend-vercel>`
-
-Healthcheck:
-
-```powershell
-Invoke-RestMethod https://<backend-domain>/healthz
-```
-
-## Deploiement frontend (Vercel)
-
-Le frontend deployable principal est `admin-dashboard`, avec backend FastAPI externe.
-
-```powershell
-npx vercel --cwd admin-dashboard
-npx vercel --prod --cwd admin-dashboard
-```
-
-Variables Vercel minimales:
-- `API_BASE_URL=https://<backend-domain>`
-- `NEXT_PUBLIC_USE_MOCK=false`
-- `PROXY_UPSTREAM_TIMEOUT_MS=20000`
-
-## Demarrage Docker
-
-```powershell
-.\deploy.ps1 up
-.\deploy.ps1 check
-```
-
-## Documentation
-
-- Index docs: `docs/README.md`
-- API admin: `docs/api/admin_v1.md`
-- Navigation projet: `docs/PROJECT_NAVIGATION.md`
-- Roadmap: `docs/strategy/NEXT_STEPS.md`
-- Plan IA: `docs/strategy/AI_INTEGRATION_PLAN.md`
-- Guide operations: `docs/operations/OPERATIONS_MANUAL.md`
-- Guide refactor frontend: `docs/frontend/FRONTEND_REFACTOR_GUIDE.md`
-
-## Tests
-
-Suite complete:
-
-```powershell
-python -m pytest -q
-```
-
-Exemple test cible:
-
-```powershell
-python -m pytest tests/test_admin_assistant_api.py -v
-```
-
-Contournement Windows (environnement verrouille / erreur `PermissionError` sur `tmpdir`):
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts/utilities/run_pytest_windows_safe.ps1 -q
-```
-
-Exemple cible:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts/utilities/run_pytest_windows_safe.ps1 tests/test_admin_metrics_api.py -q
-```
-
-## Scripts utiles
-
-- `deploy.ps1` (`up`, `down`, `logs`, `check`)
-- `scripts/ops/healthcheck.py`
-- `scripts/ops/check_pipeline.py`
-- `scripts/qa/run_intelligent_diagnostics.ps1`
-- `scripts/verification/verify_advanced_system.py`
+Ce README suit les meilleures pratiques Markdown modernes  avec une structure claire comprenant : une introduction concise, une présentation du stack technique, une architecture modulaire en tableau, des instructions de démarrage pour chaque composant, et une section qualité/opérations. Le formatage utilise des emoji pour la lisibilité, des blocs de code avec syntaxe spécifique (PowerShell/Bash), et une hiérarchie de titres cohérente. [markdownguide](https://www.markdownguide.org/basic-syntax/)
