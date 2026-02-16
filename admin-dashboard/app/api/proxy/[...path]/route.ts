@@ -1,5 +1,14 @@
 import { NextRequest } from "next/server"
 
+type ProxyDataSource = "upstream" | "dev-fallback"
+const DATA_SOURCE_HEADER = "x-prospect-data-source"
+
+function withDataSourceHeader(headers: HeadersInit | undefined, dataSource: ProxyDataSource): Headers {
+  const nextHeaders = new Headers(headers)
+  nextHeaders.set(DATA_SOURCE_HEADER, dataSource)
+  return nextHeaders
+}
+
 function getBaseUrl(): string | null {
   const configured = process.env.API_BASE_URL
   if (configured && configured.trim()) {
@@ -452,9 +461,9 @@ function respondWithDevelopmentFallback(
 
   return Response.json(payload, {
     status: 200,
-    headers: {
+    headers: withDataSourceHeader({
       "x-proxy-fallback": "dev-mock",
-    },
+    }, "dev-fallback"),
   })
 }
 
@@ -475,7 +484,10 @@ async function forwardRequest(
         detail:
           "Proxy API non configure. Definissez API_BASE_URL dans l'environnement frontend (Vercel/Netlify).",
       },
-      { status: 500 },
+      {
+        status: 500,
+        headers: withDataSourceHeader(undefined, "upstream"),
+      },
     )
   }
   const targetUrl = `${baseUrl}/${normalizedPath}${request.nextUrl.search}`
@@ -525,7 +537,10 @@ async function forwardRequest(
           ? "Upstream timeout from proxy."
           : "Unable to reach upstream API from proxy.",
       },
-      { status: isTimeout ? 504 : 502 },
+      {
+        status: isTimeout ? 504 : 502,
+        headers: withDataSourceHeader(undefined, "upstream"),
+      },
     )
   } finally {
     clearTimeout(timeout)
@@ -541,6 +556,7 @@ async function forwardRequest(
   const responseHeaders = new Headers(upstream.headers)
   responseHeaders.delete("content-encoding")
   responseHeaders.delete("transfer-encoding")
+  responseHeaders.set(DATA_SOURCE_HEADER, "upstream")
 
   return new Response(upstream.body, {
     status: upstream.status,

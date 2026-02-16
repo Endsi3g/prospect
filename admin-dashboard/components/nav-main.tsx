@@ -13,6 +13,7 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
 import { AddLeadSheet } from "@/components/add-lead-sheet"
+import { useI18n } from "@/lib/i18n"
 
 export function NavMain({
   items,
@@ -35,14 +36,15 @@ export function NavMain({
   showQuickLead?: boolean
 }) {
   const pathname = usePathname()
+  const { messages } = useI18n()
   const groups =
     sections && sections.length > 0
       ? sections
-      : [{ label: "Menu principal", items: items || [] }]
+      : [{ label: messages.sidebar.mainMenu, items: items || [] }]
 
   return (
     <SidebarGroup className="space-y-2">
-      <SidebarGroupLabel>Menu principal</SidebarGroupLabel>
+      <SidebarGroupLabel>{messages.sidebar.mainMenu}</SidebarGroupLabel>
       <SidebarGroupContent className="flex flex-col gap-4">
         {showQuickLead ? (
           <SidebarMenu>
@@ -61,7 +63,7 @@ export function NavMain({
                     asChild
                     tooltip={item.title}
                     isActive={pathname === item.url}
-                    className="h-10 rounded-lg px-3 transition-colors hover:bg-accent/50"
+                    className="h-10 rounded-lg px-3 transition-colors hover:bg-accent/50 focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-1"
                   >
                     <Link href={item.url} className="flex items-center gap-3">
                       {item.icon ? <item.icon className="!size-5" /> : null}

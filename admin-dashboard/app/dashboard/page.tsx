@@ -11,6 +11,7 @@ import { ErrorState } from "@/components/ui/error-state"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useLoadingTimeout } from "@/hooks/use-loading-timeout"
 import { fetchApi } from "@/lib/api"
+import { useI18n } from "@/lib/i18n"
 
 type DashboardStats = {
   sourced_total: number
@@ -32,6 +33,7 @@ type DashboardStats = {
 const fetcher = <T,>(path: string) => fetchApi<T>(path)
 
 export default function DashboardPage() {
+  const { messages } = useI18n()
   const { data: stats, error, isLoading, mutate, isValidating } = useSWR<DashboardStats>("/api/v1/admin/stats", fetcher)
   const loadingTimedOut = useLoadingTimeout(isLoading, 12_000)
   const [updatedAt, setUpdatedAt] = React.useState<Date | null>(null)
@@ -46,7 +48,13 @@ export default function DashboardPage() {
       <div className="@container/main flex flex-1 flex-col gap-2">
         <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">
           <div className="px-3 sm:px-4 lg:px-6">
-            <SyncStatus updatedAt={updatedAt} isValidating={isValidating} onRefresh={() => void mutate()} />
+            <SyncStatus
+              updatedAt={updatedAt}
+              isValidating={isValidating}
+              onRefresh={async () => {
+                await mutate()
+              }}
+            />
           </div>
           {isLoading && !loadingTimedOut ? (
             <div className="space-y-4 px-3 sm:px-4 lg:px-6">
@@ -62,15 +70,15 @@ export default function DashboardPage() {
           {error || loadingTimedOut ? (
             <div className="px-3 sm:px-4 lg:px-6">
               <ErrorState
-                title="Impossible de charger les statistiques du tableau de bord."
+                title={messages.dashboard.page.errorTitle}
                 description={
                   loadingTimedOut
-                    ? "Le chargement prend trop de temps. Verifiez API_BASE_URL et la disponibilite du backend."
+                    ? messages.dashboard.page.errorDescriptionTimeout
                     : error instanceof Error
                       ? error.message
-                      : "Aucune donnee n'a pu etre recuperer pour le tableau de bord."
+                      : messages.dashboard.page.errorDescriptionDefault
                 }
-                secondaryLabel="Verifier Parametres"
+                secondaryLabel={messages.dashboard.page.secondaryLabel}
                 secondaryHref="/settings"
                 onRetry={() => void mutate()}
               />

@@ -6,6 +6,7 @@ import { PanelLeftIcon } from "lucide-react"
 import { Slot } from "radix-ui"
 
 import { useIsMobile } from "@/hooks/use-mobile"
+import { useI18n } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -258,7 +259,13 @@ function SidebarTrigger({
   onClick,
   ...props
 }: React.ComponentProps<typeof Button>) {
-  const { toggleSidebar } = useSidebar()
+  const { isMobile, open, openMobile, toggleSidebar } = useSidebar()
+  const { messages } = useI18n()
+  const isExpanded = isMobile ? openMobile : open
+  const ariaControls =
+    typeof props["aria-controls"] === "string"
+      ? props["aria-controls"]
+      : "app-sidebar"
 
   return (
     <Button
@@ -267,6 +274,9 @@ function SidebarTrigger({
       variant="ghost"
       size="icon"
       className={cn("size-7", className)}
+      aria-controls={ariaControls}
+      aria-expanded={isExpanded}
+      aria-pressed={isExpanded}
       onClick={(event) => {
         onClick?.(event)
         toggleSidebar()
@@ -274,7 +284,7 @@ function SidebarTrigger({
       {...props}
     >
       <PanelLeftIcon />
-      <span className="sr-only">Toggle Sidebar</span>
+      <span className="sr-only">{messages.sidebar.toggleSidebar}</span>
     </Button>
   )
 }

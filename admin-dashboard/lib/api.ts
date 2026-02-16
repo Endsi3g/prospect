@@ -1,8 +1,22 @@
+import {
+  API_DATA_SOURCE_HEADER,
+  buildApiMeta,
+  normalizeApiDataSource,
+  publishApiMeta,
+  type ApiDataSource,
+  type ApiMeta,
+} from "./api-source"
+
 const DEFAULT_BASE_URL = "/api/proxy"
 const FORCE_MOCK_STORAGE_KEY = "prospect:forceMock"
 
 type RequestApiOptions = {
   skipAuthRetry?: boolean
+}
+
+type RequestApiResult<T> = {
+  data: T
+  meta: ApiMeta
 }
 
 type ErrorPayload = {
@@ -56,6 +70,17 @@ function friendlyProxyHint(): string {
 
 function isRecoverableProxyStatus(status: number): boolean {
   return status === 500 || status === 502 || status === 503 || status === 504
+}
+
+function reportMeta(dataSource: ApiDataSource, status: number): ApiMeta {
+  const meta = buildApiMeta(dataSource, status)
+  publishApiMeta(meta)
+  return meta
+}
+
+function parseMetaFromResponse(response: Response): ApiMeta {
+  const dataSource = normalizeApiDataSource(response.headers.get(API_DATA_SOURCE_HEADER))
+  return reportMeta(dataSource, response.status)
 }
 
 async function tryMockJsonFallback<T>(path: string, init?: RequestInit): Promise<T | null> {
@@ -157,15 +182,19 @@ async function refreshAdminSession(): Promise<boolean> {
   }
 }
 
-export async function requestApi<T>(
+export async function requestApiWithMeta<T>(
   path: string,
   init?: RequestInit,
   options?: RequestApiOptions,
-): Promise<T> {
+): Promise<RequestApiResult<T>> {
   if (isMockEnabled()) {
     const { getMockResponse } = await import("./mocks")
     try {
-      return await getMockResponse<T>(path, init)
+      const data = await getMockResponse<T>(path, init)
+      return {
+        data,
+        meta: reportMeta("dev-fallback", 200),
+      }
     } catch {
       throw new Error("Mode mock actif, mais ce flux n'a pas de fixture. Desactivez NEXT_PUBLIC_USE_MOCK ou ajoutez des donnees mock.")
     }
@@ -185,7 +214,12 @@ export async function requestApi<T>(
     })
   } catch {
     const fallback = await tryMockJsonFallback<T>(path, init)
-    if (fallback !== null) return fallback
+    if (fallback !== null) {
+      return {
+        data: fallback,
+        meta: reportMeta("dev-fallback", 200),
+      }
+    }
     throw new Error(`Connexion API impossible (${normalizedPath}). ${friendlyProxyHint()}`)
   }
 
@@ -193,28 +227,53 @@ export async function requestApi<T>(
   if (response.status === 401 && !isAuthEndpoint && !options?.skipAuthRetry) {
     const refreshed = await refreshAdminSession()
     if (refreshed) {
-      return requestApi<T>(path, init, { skipAuthRetry: true })
+      return requestApiWithMeta<T>(path, init, { skipAuthRetry: true })
     }
   }
 
   if (!response.ok) {
     if (isRecoverableProxyStatus(response.status)) {
       const fallback = await tryMockJsonFallback<T>(path, init)
-      if (fallback !== null) return fallback
+      if (fallback !== null) {
+        return {
+          data: fallback,
+          meta: reportMeta("dev-fallback", 200),
+        }
+      }
     }
     const message = await parseErrorMessage(response, normalizedPath)
     if (response.status === 401 && typeof window !== "undefined" && !isAuthEndpoint) {
       window.location.href = "/login"
-      return undefined as T
+      return {
+        data: undefined as T,
+        meta: reportMeta("unknown", response.status),
+      }
     }
     throw new Error(message)
   }
 
+  const meta = parseMetaFromResponse(response)
+
   if (response.status === 204) {
-    return undefined as T
+    return {
+      data: undefined as T,
+      meta,
+    }
   }
 
-  return (await response.json()) as T
+  return {
+    data: (await response.json()) as T,
+    meta,
+  }
+}
+
+export async function requestApi<T>(
+  path: string,
+  init?: RequestInit,
+  options?: RequestApiOptions,
+): Promise<T> {
+  const payload = await requestApiWithMeta<T>(path, init, options)
+  return payload.data
 }
 
 export async function fetchApi<T>(path: string): Promise<T> {
@@ -225,7 +284,9 @@ export async function requestApiBlob(path: string, init?: RequestInit): Promise<
   if (isMockEnabled()) {
     const { getMockBlobResponse } = await import("./mocks")
     try {
-      return await getMockBlobResponse(path, init)
+      const blob = await getMockBlobResponse(path, init)
+      reportMeta("dev-fallback", 200)
+      return blob
     } catch {
       throw new Error("Mode mock actif, mais aucun export mock n'est defini pour ce flux.")
     }
@@ -243,18 +304,27 @@ export async function requestApiBlob(path: string, init?: RequestInit): Promise<
     })
   } catch {
     const fallback = await tryMockBlobFallback(path, init)
-    if (fallback !== null) return fallback
+    if (fallback !== null) {
+      reportMeta("dev-fallback", 200)
+      return fallback
+    }
     throw new Error(`Connexion API impossible (${normalizedPath}). ${friendlyProxyHint()}`)
   }
 
   if (!response.ok) {
     if (isRecoverableProxyStatus(response.status)) {
       const fallback = await tryMockBlobFallback(path, init)
-      if (fallback !== null) return fallback
+      if (fallback !== null) {
+        reportMeta("dev-fallback", 200)
+        return fallback
+      }
     }
     const message = await parseErrorMessage(response, normalizedPath)
     throw new Error(message)
   }
 
+  parseMetaFromResponse(response)
   return response.blob()
 }
+
+export type { ApiDataSource, ApiMeta } from "./api-source"

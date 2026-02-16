@@ -25,6 +25,8 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet"
 import { requestApi } from "@/lib/api"
+import { useI18n } from "@/lib/i18n"
+import { isValidLeadEmail, isValidLeadPhone } from "@/lib/lead-form-validation"
 
 type LeadFormState = {
   firstName: string
@@ -46,16 +48,8 @@ const DEFAULT_FORM: LeadFormState = {
   segment: "General",
 }
 
-function validateEmail(email: string): boolean {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
-}
-
-function validatePhone(phone: string): boolean {
-  if (!phone.trim()) return true
-  return /^[+()\d\s-]{6,20}$/.test(phone.trim())
-}
-
 export function AddLeadSheet() {
+  const { messages } = useI18n()
   const [isOpen, setIsOpen] = React.useState(false)
   const [isLoading, setIsLoading] = React.useState(false)
   const [createAnother, setCreateAnother] = React.useState(false)
@@ -81,8 +75,8 @@ export function AddLeadSheet() {
     const nextErrors: Record<string, string> = {}
     if (!form.firstName.trim()) nextErrors.firstName = "Prenom obligatoire."
     if (!form.lastName.trim()) nextErrors.lastName = "Nom obligatoire."
-    if (!validateEmail(form.email)) nextErrors.email = "Email invalide."
-    if (!validatePhone(form.phone)) nextErrors.phone = "Telephone invalide."
+    if (!isValidLeadEmail(form.email)) nextErrors.email = "Email invalide."
+    if (!isValidLeadPhone(form.phone)) nextErrors.phone = "Telephone invalide."
     if (!form.company.trim()) nextErrors.company = "Entreprise obligatoire."
     setErrors(nextErrors)
     return Object.keys(nextErrors).length === 0
@@ -140,10 +134,10 @@ export function AddLeadSheet() {
       <SheetTrigger asChild>
         <Button
           className="bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground active:bg-primary/90 active:text-primary-foreground h-11 w-full rounded-xl px-4 font-bold shadow-lg transition-all duration-200"
-          aria-label="Ouvrir le formulaire de creation de lead"
+          aria-label={messages.addLead.quickButtonAria}
         >
           <IconCirclePlusFilled className="!size-5" />
-          <span>Creation rapide de lead</span>
+          <span>{messages.sidebar.quickLead}</span>
         </Button>
       </SheetTrigger>
       <SheetContent className="sm:max-w-[460px] rounded-l-xl">
@@ -187,7 +181,7 @@ export function AddLeadSheet() {
                 value={form.email}
                 onChange={(event) => setField("email", event.target.value)}
                 onBlur={() => {
-                  if (form.email && !validateEmail(form.email)) {
+                  if (form.email && !isValidLeadEmail(form.email)) {
                     setErrors(prev => ({ ...prev, email: "Format d'email invalide" }))
                   }
                 }}
@@ -202,6 +196,11 @@ export function AddLeadSheet() {
                 id="phone"
                 value={form.phone}
                 onChange={(event) => setField("phone", event.target.value)}
+                onBlur={() => {
+                  if (form.phone && !isValidLeadPhone(form.phone)) {
+                    setErrors((current) => ({ ...current, phone: "Format de telephone invalide" }))
+                  }
+                }}
                 placeholder="+1 (555) 000-0000"
                 className={errors.phone ? "border-red-500 focus-visible:ring-red-500" : ""}
               />

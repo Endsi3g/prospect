@@ -14,6 +14,7 @@ import { toast } from "sonner"
 import { AppSidebar } from "@/components/app-sidebar"
 import { ExportCsvButton } from "@/components/export-csv-button"
 import { SiteHeader } from "@/components/site-header"
+import { SyncStatus } from "@/components/sync-status"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { EmptyState } from "@/components/ui/empty-state"
@@ -32,6 +33,7 @@ import {
   SidebarInset,
   SidebarProvider,
 } from "@/components/ui/sidebar"
+import { useLoadingTimeout } from "@/hooks/use-loading-timeout"
 import { fetchApi, requestApi, requestApiBlob } from "@/lib/api"
 import { formatDateFr, formatDateTimeFr, formatNumberFr } from "@/lib/format"
 
@@ -137,6 +139,8 @@ export default function ReportsPage() {
     "/api/v1/admin/reports/schedules/runs?limit=20",
     fetcher,
   )
+  const loadingTimedOut = useLoadingTimeout(isLoading, 12_000)
+  const [updatedAt, setUpdatedAt] = React.useState<Date | null>(null)
 
   const [isExportingPdf, setIsExportingPdf] = React.useState(false)
   const [creatingSchedule, setCreatingSchedule] = React.useState(false)
@@ -150,6 +154,11 @@ export default function ReportsPage() {
     minute_local: "00",
     recipients: "",
   })
+
+  React.useEffect(() => {
+    if (!report30d) return
+    setUpdatedAt(new Date())
+  }, [report30d])
 
   async function exportPdf() {
     try {
@@ -257,6 +266,7 @@ export default function ReportsPage() {
       <SidebarInset>
         <SiteHeader />
         <div className="flex flex-1 flex-col gap-4 p-3 pt-0 sm:p-4 sm:pt-0 lg:p-6">
+          <SyncStatus updatedAt={updatedAt} onRefresh={() => void mutate()} />
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <h2 className="text-3xl font-bold tracking-tight">Rapports</h2>
             <div className="flex flex-wrap items-center gap-2 sm:justify-end">
@@ -271,7 +281,7 @@ export default function ReportsPage() {
             </div>
           </div>
 
-          {isLoading ? (
+          {isLoading && !loadingTimedOut ? (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <Skeleton className="h-24 w-full" />
               <Skeleton className="h-24 w-full" />
@@ -279,19 +289,28 @@ export default function ReportsPage() {
               <Skeleton className="h-24 w-full" />
             </div>
           ) : null}
-          {!isLoading && error ? (
+          {!isLoading && (error || loadingTimedOut) ? (
             <ErrorState
               title="Impossible de charger les indicateurs 30 jours."
+              description={
+                loadingTimedOut
+                  ? "Le chargement depasse le delai attendu. Verifiez la connectivite API puis reessayez."
+                  : error instanceof Error
+                    ? error.message
+                    : "Les indicateurs 30 jours sont temporairement indisponibles."
+              }
+              secondaryLabel="Verifier les integrations"
+              secondaryHref="/systems"
               onRetry={() => void mutate()}
             />
           ) : null}
-          {!isLoading && !error && report30d && report30d.kpis.leads_created_total === 0 ? (
+          {!isLoading && !error && !loadingTimedOut && report30d && report30d.kpis.leads_created_total === 0 ? (
             <EmptyState
               title="Aucune donnee disponible"
               description="Ajoutez vos premiers leads pour activer les rapports et exports."
             />
           ) : null}
-          {!isLoading && !error && report30d && report30d.kpis.leads_created_total > 0 ? (
+          {!isLoading && !error && !loadingTimedOut && report30d && report30d.kpis.leads_created_total > 0 ? (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <Card>
                 <CardHeader className="pb-2">

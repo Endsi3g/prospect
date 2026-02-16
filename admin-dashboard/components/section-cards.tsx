@@ -9,6 +9,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import { useI18n } from "@/lib/i18n"
 
 interface Stats {
   sourced_total: number
@@ -21,6 +22,7 @@ interface Stats {
 }
 
 export function SectionCards({ stats }: { stats?: Stats }) {
+  const { messages } = useI18n()
   const safeStats = stats || {
     sourced_total: 0,
     qualified_total: 0,
@@ -40,7 +42,7 @@ export function SectionCards({ stats }: { stats?: Stats }) {
     <div className="*:data-[slot=card]:from-primary/5 *:data-[slot=card]:to-card dark:*:data-[slot=card]:bg-card grid grid-cols-1 gap-4 px-4 *:data-[slot=card]:bg-gradient-to-t *:data-[slot=card]:shadow-xs lg:px-6 @xl/main:grid-cols-2 @5xl/main:grid-cols-4">
       <Card className="@container/card">
         <CardHeader>
-          <CardDescription>Leads sources</CardDescription>
+          <CardDescription>{messages.dashboard.stats.sourcedLeads}</CardDescription>
           <CardTitle className="text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
             {safeStats.sourced_total}
           </CardTitle>
@@ -50,14 +52,14 @@ export function SectionCards({ stats }: { stats?: Stats }) {
         </CardHeader>
           <CardFooter className="flex-col items-start gap-1.5 text-sm">
           <div className="line-clamp-1 flex gap-2 font-medium">
-            Base active
+            {messages.dashboard.stats.activeBase}
           </div>
         </CardFooter>
       </Card>
 
       <Card className="@container/card">
         <CardHeader>
-          <CardDescription>Leads qualifies</CardDescription>
+          <CardDescription>{messages.dashboard.stats.qualifiedLeads}</CardDescription>
           <CardTitle className="text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
             {safeStats.qualified_total}
           </CardTitle>
@@ -70,14 +72,14 @@ export function SectionCards({ stats }: { stats?: Stats }) {
         </CardHeader>
         <CardFooter className="flex-col items-start gap-1.5 text-sm">
           <div className="line-clamp-1 flex gap-2 font-medium">
-            Taux de qualification: {formatPercent(safeStats.qualified_rate)}
+            {messages.dashboard.stats.qualificationRate}: {formatPercent(safeStats.qualified_rate)}
           </div>
         </CardFooter>
       </Card>
 
       <Card className="@container/card">
         <CardHeader>
-          <CardDescription>Leads contactes</CardDescription>
+          <CardDescription>{messages.dashboard.stats.contactedLeads}</CardDescription>
           <CardTitle className="text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
             {safeStats.contacted_total}
           </CardTitle>
@@ -90,14 +92,14 @@ export function SectionCards({ stats }: { stats?: Stats }) {
         </CardHeader>
         <CardFooter className="flex-col items-start gap-1.5 text-sm">
           <div className="line-clamp-1 flex gap-2 font-medium">
-            Taux de contact: {formatPercent(safeStats.contact_rate)}
+            {messages.dashboard.stats.contactRate}: {formatPercent(safeStats.contact_rate)}
           </div>
         </CardFooter>
       </Card>
 
       <Card className="@container/card">
         <CardHeader>
-          <CardDescription>Opportunites gagnees</CardDescription>
+          <CardDescription>{messages.dashboard.stats.wonOpportunities}</CardDescription>
           <CardTitle className="text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
             {safeStats.closed_total}
           </CardTitle>
@@ -109,7 +111,7 @@ export function SectionCards({ stats }: { stats?: Stats }) {
         </CardHeader>
         <CardFooter className="flex-col items-start gap-1.5 text-sm">
           <div className="line-clamp-1 flex gap-2 font-medium">
-            Taux de gain: {formatPercent(safeStats.close_rate)}
+            {messages.dashboard.stats.winRate}: {formatPercent(safeStats.close_rate)}
           </div>
         </CardFooter>
       </Card>
