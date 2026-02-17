@@ -1,10 +1,10 @@
-# Manuel Opérationnelle de Guerre.pdf
+# Manuel Opérationnel de Guerre.pdf
 
-- `doc_id`: `manuel-operationelle-de-guerre-aa366af97155`
-- `source_path`: `./CompagnieDocs/Manuel Opérationnelle de Guerre.pdf`
+- `doc_id`: `manuel-operationnel-de-guerre-aa366af97155`
+- `source_path`: `./CompagnieDocs/Manuel Opérationnel de Guerre.pdf`
 - `sha256`: `aa366af971550503d1c4b67797cb97b2de23eecee3e01b8154dacac18ca7c7fb`
 - `page_count`: `6`
-- `generated_at`: `2026-02-16T05:35:38.776182+00:00`
+- `generated_at`: `2026-02-17T03:43:39.744352+00:00`
 
 ## Page 1
 
@@ -163,4 +163,3 @@ business. Regardez juste la vidéo de 2 min."
 tu auras 3 clients. C'est mathématique. 
 3. Suivi Obsessionnel : L'argent est dans la relance. La plupart des ventes se font au 
 4ème message. N'abandonne pas au premier silence
-

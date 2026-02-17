@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import datetime, timezone
 from typing import Any
@@ -54,6 +55,16 @@ def serialize_enrichment_job(row: DBEnrichmentJob) -> dict[str, Any]:
         "created_at": row.created_at.isoformat() if row.created_at else None,
         "finished_at": row.finished_at.isoformat() if row.finished_at else None,
     }
+
+
+def sanitize_error_message(exc: Exception | str) -> str:
+    """Remove sensitive data from error messages and truncate."""
+    msg = str(exc)
+    # Remove potential credentials in URLs
+    msg = re.sub(r"://[^@/]+@", "://****@", msg)
+    # Remove file paths (simple heuristic)
+    msg = re.sub(r"(/[a-zA-Z0-9._-]+)+", "/.../", msg)
+    return msg[:1000]
 
 
 def run_enrichment(
@@ -139,10 +150,14 @@ def run_enrichment(
         return row
     except Exception as exc:
         row.status = "failed"
-        row.error_message = str(exc)
+        row.error_message = sanitize_error_message(exc)
         row.finished_at = datetime.now(timezone.utc)
-        db.commit()
-        db.refresh(row)
+        try:
+            db.commit()
+            db.refresh(row)
+        except Exception as commit_exc:
+            # Attach commit error info but don't swallow 'exc'
+            row.error_message = f"{row.error_message} (Commit failure: {commit_exc})"
         raise
 
 

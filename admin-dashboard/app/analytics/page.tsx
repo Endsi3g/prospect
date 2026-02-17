@@ -63,14 +63,7 @@ export default function AnalyticsPage() {
   )
 
   return (
-    <SidebarProvider
-      style={
-        {
-          "--sidebar-width": "calc(var(--spacing) * 72)",
-          "--header-height": "calc(var(--spacing) * 12)",
-        } as React.CSSProperties
-      }
-    >
+    <SidebarProvider>
       <AppSidebar variant="inset" />
       <SidebarInset>
         <SiteHeader />
@@ -96,7 +89,7 @@ export default function AnalyticsPage() {
               title="Impossible de charger les donnees analytiques."
               description={
                 loadingTimedOut
-                  ? "Le chargement depasse le delai attendu. Vérifiez la connectivite API puis relancez."
+                  ? "Le chargement dépasse le délai attendu. Vérifiez la connectivité API puis relancez."
                   : analyticsError instanceof Error
                     ? analyticsError.message
                     : "Les donnees analytiques sont indisponibles."

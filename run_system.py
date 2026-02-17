@@ -169,10 +169,11 @@ def main():
     init_db()
     db_session = SessionLocal()
 
+    from src.admin.secrets_manager import secrets_manager
     client = None
     
     if args.source == "apollo":
-        apollo_key = os.getenv("APOLLO_API_KEY")
+        apollo_key = secrets_manager.resolve_secret(db_session, "APOLLO_API_KEY")
         if apollo_key and apollo_key != "your_apollo_api_key_here":
             logger.info("Using Apollo data source.")
             client = ApolloClient(api_key=apollo_key)
@@ -181,7 +182,7 @@ def main():
             client = MockApolloClient()
             
     elif args.source == "apify":
-        apify_token = os.getenv("APIFY_API_TOKEN")
+        apify_token = secrets_manager.resolve_secret(db_session, "APIFY_API_TOKEN")
         if apify_token and apify_token != "your_apify_api_token_here":
             logger.info("Using Apify data source.")
             client = ApifyMapsClient(api_token=apify_token)

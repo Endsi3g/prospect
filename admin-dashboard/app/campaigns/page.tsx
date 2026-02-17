@@ -572,7 +572,7 @@ export default function CampaignsPage() {
   return (
     <AppShell>
       <div className="flex flex-1 flex-col gap-4">
-        <div className="rounded-2xl border bg-linear-to-r from-slate-900 via-slate-800 to-slate-700 p-5 text-slate-50">
+        <div className="rounded-2xl border bg-gradient-to-r from-slate-900 via-slate-800 to-slate-700 p-5 text-slate-50">
           <h2 className="text-3xl font-bold tracking-tight">Growth Automation Studio</h2>
           <p className="mt-2 text-sm text-slate-200">
             Campagnes, sequences, generation de contenu et enrichment dans une vue unifiee.

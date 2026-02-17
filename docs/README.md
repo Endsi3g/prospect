@@ -6,6 +6,7 @@ This folder contains project documentation organized by topic.
 
 - `docs/PROJECT_NAVIGATION.md`: repository map and where key code lives.
 - `docs/api/admin_v1.md`: admin API v1 routes and auth notes.
+- `docs/reference/COMPAGNIEDOCS_CATALOG.md`: catalogue de la bibliothèque commerciale.
 
 ## Strategy and planning
 
@@ -22,6 +23,7 @@ This folder contains project documentation organized by topic.
 - `docs/operations/OPERATIONS_MANUAL.md`: deployment and operations runbook (sanitized).
 - `docs/operations/KOYEB_DEPLOYMENT.md`: backend deployment runbook for Koyeb.
 - `docs/operations/VERCEL_DEPLOYMENT.md`: frontend deployment runbook for Vercel.
+- `docs/operations/COMPAGNIE_DOCS_INGESTION.md`: workflow d'ingestion des documents commerciaux.
 
 ## Playbooks
 

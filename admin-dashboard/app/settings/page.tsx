@@ -20,6 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
+import { SecretsModal } from "@/components/secrets-modal"
 import { requestApi } from "@/lib/api"
 
 type SettingsPayload = {
@@ -72,6 +73,7 @@ export default function SettingsPage() {
   const [isSaving, setIsSaving] = React.useState(false)
   const [savingIntegrations, setSavingIntegrations] = React.useState(false)
   const [creatingWebhook, setCreatingWebhook] = React.useState(false)
+  const [secretsModalOpen, setSecretsModalOpen] = React.useState(false)
   const [form, setForm] = React.useState<SettingsPayload>({
     organization_name: "",
     locale: "fr-FR",
@@ -281,6 +283,9 @@ export default function SettingsPage() {
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="text-3xl font-bold tracking-tight">Parametres</h2>
             <div className="flex flex-wrap items-center gap-2">
+              <Button onClick={() => setSecretsModalOpen(true)} variant="secondary">
+                Gerer cles ENV
+              </Button>
               <ExportCsvButton entity="systems" label="Export systemes" />
               <Button asChild variant="outline">
                 <Link href="/systems">Console systemes</Link>
@@ -806,6 +811,7 @@ export default function SettingsPage() {
             </div>
           </div>
       </div>
+      <SecretsModal open={secretsModalOpen} onOpenChange={setSecretsModalOpen} />
     </AppShell>
   )
 }

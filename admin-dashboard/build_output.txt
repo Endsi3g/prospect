@@ -1,0 +1,27 @@
+
+> admin-dashboard@0.1.0 build
+> next build
+
+Ôû▓ Next.js 16.1.6 (Turbopack)
+- Environments: .env.local, .env.production
+
+ÔÜá The "middleware" file convention is deprecated. Please use "proxy" instead. Learn more: https://nextjs.org/docs/messages/middleware-to-proxy
+  Creating an optimized production build ...
+Ô£ô Compiled successfully in 26.5s
+  Running TypeScript ...
+  Collecting page data using 7 workers ...
+  Generating static pages using 7 workers (0/26) ...
+Ô¿» useSearchParams() should be wrapped in a suspense boundary at page "/login". Read more: https://nextjs.org/docs/messages/missing-suspense-with-csr-bailout
+    at Q (C:\prospect\prospect\admin-dashboard\.next\server\chunks\ssr\node_modules_next_920e7746._.js:2:2111)
+    at o (C:\prospect\prospect\admin-dashboard\.next\server\chunks\ssr\node_modules_next_920e7746._.js:4:5284)
+    at m (C:\prospect\prospect\admin-dashboard\.next\server\chunks\ssr\components_5bb3621d._.js:1:1092)
+    at an (C:\prospect\prospect\admin-dashboard\node_modules\next\dist\compiled\next-server\app-page-turbo.runtime.prod.js:2:84360)
+    at ai (C:\prospect\prospect\admin-dashboard\node_modules\next\dist\compiled\next-server\app-page-turbo.runtime.prod.js:2:86179)
+    at ai (C:\prospect\prospect\admin-dashboard\node_modules\next\dist\compiled\next-server\app-page-turbo.runtime.prod.js:2:104708)
+    at al (C:\prospect\prospect\admin-dashboard\node_modules\next\dist\compiled\next-server\app-page-turbo.runtime.prod.js:2:107953)
+    at as (C:\prospect\prospect\admin-dashboard\node_modules\next\dist\compiled\next-server\app-page-turbo.runtime.prod.js:2:105368)
+    at am (C:\prospect\prospect\admin-dashboard\node_modules\next\dist\compiled\next-server\app-page-turbo.runtime.prod.js:2:112882)
+    at ai (C:\prospect\prospect\admin-dashboard\node_modules\next\dist\compiled\next-server\app-page-turbo.runtime.prod.js:2:98808)
+Error occurred prerendering page "/login". Read more: https://nextjs.org/docs/messages/prerender-error
+Export encountered an error on /login/page: /login, exiting the build.
+Ô¿» Next.js build worker exited with code: 1 and signal: null

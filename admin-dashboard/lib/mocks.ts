@@ -1000,9 +1000,9 @@ const workloadOwnersPayload = (state: any) => {
   const nowMs = Date.now()
 
   const items = users.map((user: any) => {
-    const owned = leads.filter((lead) => String(lead.lead_owner_user_id || "") === String(user.id))
-    const active = owned.filter((lead) => !TERMINAL_CANONICAL_STAGE_SET.has(leadCanonicalStage(lead)))
-    const overdue = active.filter((lead) => {
+    const owned = leads.filter((lead: any) => String(lead.lead_owner_user_id || "") === String(user.id))
+    const active = owned.filter((lead: any) => !TERMINAL_CANONICAL_STAGE_SET.has(leadCanonicalStage(lead)))
+    const overdue = active.filter((lead: any) => {
       const ts = Date.parse(String(lead.sla_due_at || ""))
       return Number.isFinite(ts) && ts < nowMs
     })
@@ -1016,9 +1016,9 @@ const workloadOwnersPayload = (state: any) => {
       overdue_sla_count: overdue.length,
     }
   })
-  items.sort((a, b) => (b.overdue_sla_count - a.overdue_sla_count) || (b.lead_count_active - a.lead_count_active))
+  items.sort((a: any, b: any) => (b.overdue_sla_count - a.overdue_sla_count) || (b.lead_count_active - a.lead_count_active))
 
-  const unassignedActiveLeads = leads.filter((lead) => !lead.lead_owner_user_id && !TERMINAL_CANONICAL_STAGE_SET.has(leadCanonicalStage(lead))).length
+  const unassignedActiveLeads = leads.filter((lead: any) => !lead.lead_owner_user_id && !TERMINAL_CANONICAL_STAGE_SET.has(leadCanonicalStage(lead))).length
   return {
     generated_at: nowIso(),
     items,
@@ -1244,7 +1244,7 @@ function handleJson(path: string, init?: RequestInit): unknown {
       events: Array.isArray(body.events) ? (body.events as unknown[]).map((item) => String(item)) : ["lead.created"],
       enabled: body.enabled !== false,
     }
-    ;(state.webhooks as any[]).unshift(created)
+      ; (state.webhooks as any[]).unshift(created)
     return clone(created)
   }
   if (pathname.match(/^\/api\/v1\/admin\/webhooks\/[^/]+$/) && method === "DELETE") {
@@ -1267,7 +1267,7 @@ function handleJson(path: string, init?: RequestInit): unknown {
       status: "invited",
       roles: Array.isArray(body.roles) ? (body.roles as unknown[]).map((item) => String(item)) : ["sales"],
     }
-    ;(state.users as any[]).unshift(created)
+      ; (state.users as any[]).unshift(created)
     return clone(created)
   }
   if (pathname.match(/^\/api\/v1\/admin\/users\/[^/]+$/) && (method === "PATCH" || method === "PUT")) {
@@ -1366,7 +1366,7 @@ function handleJson(path: string, init?: RequestInit): unknown {
           updated_at: now,
           closed_at: null,
         }
-        ;(state.tasks as any[]).unshift(task)
+          ; (state.tasks as any[]).unshift(task)
         result = { applied: true, task_id: task.id }
       }
     } else if (recommendation.recommendation_type === "create_handoff") {
@@ -1502,7 +1502,7 @@ function handleJson(path: string, init?: RequestInit): unknown {
       handoff_required: false,
       handoff_completed_at: null,
     }
-    ;(state.leads as any[]).unshift(createdLead)
+      ; (state.leads as any[]).unshift(createdLead)
     return { created: true, lead: { id: createdLead.id, name: `${firstName} ${lastName}`.trim() } }
   }
   if (pathname.match(/^\/api\/v1\/admin\/opportunities\/[^/]+$/) && method === "PATCH") {
@@ -1717,7 +1717,7 @@ function handleJson(path: string, init?: RequestInit): unknown {
     let entityId = ""
 
     if (leadId) {
-      const lead = (state.leads as any[]).find((item) => String(item.id) === leadId)
+      const lead = (state.leads as any[]).find((item: any) => String(item.id) === leadId)
       if (!lead) throw new Error("Lead introuvable")
       lead.handoff_required = true
       lead.handoff_completed_at = nowIso()
@@ -1757,7 +1757,72 @@ function handleJson(path: string, init?: RequestInit): unknown {
     }
   }
 
-  if (pathname === "/api/v1/admin/help" && method === "GET") return { support_email: state.settings.support_email, faqs: [{ question: "Comment lancer ?", answer: "Allez dans Leads." }], links: [{ label: "Parametres", href: "/settings" }] }
+  if (pathname === "/api/v1/admin/help" && method === "GET") {
+    return {
+      support_email: state.settings.support_email,
+      faqs: [{ question: "Comment lancer ?", answer: "Allez dans Leads." }],
+      links: [{ label: "Parametres", href: "/settings" }],
+      sections: [
+        {
+          id: "guides",
+          label: "Guides",
+          items: [{ label: "Quickstart", href: "/help/guides/quickstart" }]
+        }
+      ],
+      quick_actions: [
+        { id: "docs", label: "Library", href: "/library", scope: "global" }
+      ],
+      updated_at: nowIso()
+    }
+  }
+
+  if (pathname === "/api/v1/admin/secrets/schema" && method === "GET") {
+    return {
+      version: "v1",
+      categories: [
+        {
+          id: "ai",
+          label: "IA / NLP",
+          keys: [
+            { key: "OPENAI_API_KEY", description: "Clé OpenAI" },
+            { key: "ANTHROPIC_API_KEY", description: "Clé Anthropic" }
+          ]
+        }
+      ]
+    }
+  }
+
+  if (pathname === "/api/v1/admin/secrets" && method === "GET") {
+    return {
+      items: [
+        { key: "OPENAI_API_KEY", configured: true, source: "env", masked_value: "********", updated_at: nowIso() },
+        { key: "ANTHROPIC_API_KEY", configured: false, source: "none", masked_value: "", updated_at: null }
+      ]
+    }
+  }
+
+  if (pathname === "/api/v1/admin/docs/compagnie" && method === "GET") {
+    return {
+      generated_at: nowIso(),
+      stats: { total_files: 1, processed_pdf: 1, ingested: 0, failed: 0 },
+      page: 1,
+      page_size: 24,
+      total: 1,
+      items: [
+        {
+          doc_id: "mock-doc-1",
+          title: "Document Mock.pdf",
+          ext: ".pdf",
+          status: "processed",
+          size_bytes: 1024,
+          updated_at: nowIso(),
+          raw_path: "/raw/mock-doc-1.pdf",
+          processed: { markdown_path: "/processed/mock-doc-1.md" }
+        }
+      ]
+    }
+  }
+
   if (pathname === "/api/v1/admin/diagnostics/latest" && method === "GET") return { available: false, artifact: "artifacts/qa/latest_diagnostics.json", detail: "No diagnostics artifact available yet.", status: "warning", finished_at: null }
   if (pathname === "/api/v1/admin/autofix/latest" && method === "GET") return { available: false, artifact: "artifacts/qa/latest_autofix.json", detail: "No autofix artifact available yet.", status: "warning", finished_at: null }
   if (pathname === "/api/v1/admin/diagnostics/run" && method === "POST") return { ok: true, return_code: 0, auto_fix: false, started_at: nowIso(), finished_at: nowIso(), duration_seconds: 0.02, artifact: "artifacts/qa/latest_diagnostics.json", stdout_tail: ["[mock] diagnostics completed"], stderr_tail: [], artifact_payload: { status: "ok", source: "mock" } }
@@ -1807,12 +1872,12 @@ function handleJson(path: string, init?: RequestInit): unknown {
     if (industry) rows = rows.filter((lead) => String(lead.company?.industry || "").toLowerCase().includes(industry))
     if (location) rows = rows.filter((lead) => String(lead.company?.location || "").toLowerCase().includes(location))
     if (tag) rows = rows.filter((lead) => Array.isArray(lead.tags) && lead.tags.some((item: string) => item.toLowerCase().includes(tag)))
-    rows = rows.filter((lead) => Number(lead.total_score || 0) >= minScore && Number(lead.total_score || 0) <= maxScore)
-    if (createdFrom !== null) rows = rows.filter((lead) => Date.parse(String(lead.created_at || "")) >= createdFrom)
-    if (createdTo !== null) rows = rows.filter((lead) => Date.parse(String(lead.created_at || "")) <= createdTo)
-    if (hasEmail !== null) rows = rows.filter((lead) => (hasEmail ? Boolean(lead.email) : !lead.email))
-    if (hasPhone !== null) rows = rows.filter((lead) => (hasPhone ? Boolean(lead.phone) : !lead.phone))
-    if (hasLinkedin !== null) rows = rows.filter((lead) => (hasLinkedin ? Boolean(lead.linkedin_url) : !lead.linkedin_url))
+    rows = rows.filter((lead: any) => Number(lead.total_score || 0) >= minScore && Number(lead.total_score || 0) <= maxScore)
+    if (createdFrom !== null) rows = rows.filter((lead: any) => Date.parse(String(lead.created_at || "")) >= createdFrom)
+    if (createdTo !== null) rows = rows.filter((lead: any) => Date.parse(String(lead.created_at || "")) <= createdTo)
+    if (hasEmail !== null) rows = rows.filter((lead: any) => (hasEmail ? Boolean(lead.email) : !lead.email))
+    if (hasPhone !== null) rows = rows.filter((lead: any) => (hasPhone ? Boolean(lead.phone) : !lead.phone))
+    if (hasLinkedin !== null) rows = rows.filter((lead: any) => (hasLinkedin ? Boolean(lead.linkedin_url) : !lead.linkedin_url))
 
     const value = (lead: any) => {
       if (sort === "first_name") return `${lead.first_name || ""} ${lead.last_name || ""}`
@@ -1821,7 +1886,7 @@ function handleJson(path: string, init?: RequestInit): unknown {
       if (sort === "updated_at") return lead.updated_at
       return lead.created_at
     }
-    rows.sort((a, b) => {
+    rows.sort((a: any, b: any) => {
       const c = cmp(value(a), value(b))
       return order === "asc" ? c : -c
     })
@@ -1863,19 +1928,19 @@ function handleJson(path: string, init?: RequestInit): unknown {
       created_at: nowIso(),
       updated_at: nowIso(),
     }
-    ;(state.leads as any[]).unshift(created)
-    ;(state.notifications as any[]).unshift({
-      id: nextId("notif"),
-      event_key: "lead_created",
-      title: `Nouveau lead: ${first} ${last}`,
-      message: `${companyName} ajoute depuis formulaire.`,
-      channel: "in_app",
-      is_read: false,
-      created_at: nowIso(),
-      link_href: "/leads",
-      entity_type: "lead",
-      entity_id: created.id,
-    })
+      ; (state.leads as any[]).unshift(created)
+      ; (state.notifications as any[]).unshift({
+        id: nextId("notif"),
+        event_key: "lead_created",
+        title: `Nouveau lead: ${first} ${last}`,
+        message: `${companyName} ajoute depuis formulaire.`,
+        channel: "in_app",
+        is_read: false,
+        created_at: nowIso(),
+        link_href: "/leads",
+        entity_type: "lead",
+        entity_id: created.id,
+      })
     return clone(created)
   }
   if (pathname === "/api/v1/admin/leads/bulk-delete" && method === "POST") {
@@ -1900,15 +1965,15 @@ function handleJson(path: string, init?: RequestInit): unknown {
     const projectId = String(url.searchParams.get("project_id") || "").trim()
     const sort = String(url.searchParams.get("sort") || "created_at")
     const order = String(url.searchParams.get("order") || "desc").toLowerCase() === "asc" ? "asc" : "desc"
-    let rows = (state.tasks as any[]).filter((task) => {
+    let rows = (state.tasks as any[]).filter((task: any) => {
       if (!q) return true
       const content = `${task.title || ""} ${task.description || ""} ${task.assigned_to || ""} ${task.source || ""} ${task.channel || ""} ${task.project_id || ""}`.toLowerCase()
       return content.includes(q)
     })
-    if (status) rows = rows.filter((task) => String(task.status) === status)
-    if (channel) rows = rows.filter((task) => String(task.channel) === channel)
-    if (source) rows = rows.filter((task) => String(task.source) === source)
-    if (projectId) rows = rows.filter((task) => String(task.project_id || "") === projectId)
+    if (status) rows = rows.filter((task: any) => String(task.status) === status)
+    if (channel) rows = rows.filter((task: any) => String(task.channel) === channel)
+    if (source) rows = rows.filter((task: any) => String(task.source) === source)
+    if (projectId) rows = rows.filter((task: any) => String(task.project_id || "") === projectId)
     const value = (task: any) => {
       if (sort === "title") return task.title
       if (sort === "status") return task.status
@@ -1921,7 +1986,7 @@ function handleJson(path: string, init?: RequestInit): unknown {
       if (sort === "sequence_step") return Number(task.sequence_step || 0)
       return task.created_at
     }
-    rows.sort((a, b) => {
+    rows.sort((a: any, b: any) => {
       const c = cmp(value(a), value(b))
       return order === "asc" ? c : -c
     })
@@ -1931,7 +1996,7 @@ function handleJson(path: string, init?: RequestInit): unknown {
     const now = nowIso()
     const projectId = body.project_id ? String(body.project_id) : null
     const linkedProject = projectId
-      ? (state.projects as any[]).find((project) => String(project.id) === projectId)
+      ? (state.projects as any[]).find((project: any) => String(project.id) === projectId)
       : null
     const created = {
       id: nextId("task"),
@@ -1966,7 +2031,7 @@ function handleJson(path: string, init?: RequestInit): unknown {
       updated_at: now,
       closed_at: null,
     }
-    ;(state.tasks as any[]).unshift(created)
+      ; (state.tasks as any[]).unshift(created)
     return clone(created)
   }
   if (pathname.match(/^\/api\/v1\/admin\/tasks\/[^/]+$/) && method === "GET") {
@@ -2099,7 +2164,7 @@ function handleJson(path: string, init?: RequestInit): unknown {
       created_at: nowIso(),
       updated_at: nowIso(),
     }
-    ;(state.projects as any[]).unshift(created)
+      ; (state.projects as any[]).unshift(created)
     return clone(created)
   }
   if (pathname.match(/^\/api\/v1\/admin\/projects\/[^/]+$/) && method === "GET") {
@@ -2182,7 +2247,7 @@ function handleJson(path: string, init?: RequestInit): unknown {
       entity_type: body.entity_type ? String(body.entity_type) : null,
       entity_id: body.entity_id ? String(body.entity_id) : null,
     }
-    ;(state.notifications as any[]).unshift(created)
+      ; (state.notifications as any[]).unshift(created)
     return clone(created)
   }
   if (pathname === "/api/v1/admin/notifications/mark-read" && method === "POST") {
@@ -2217,7 +2282,7 @@ function handleJson(path: string, init?: RequestInit): unknown {
       amount_cents: Math.max(0, Number(body.amount_cents || 0)),
       notes: body.notes ? String(body.notes) : null,
     }
-    ;(state.billing.invoices as any[]).unshift(created)
+      ; (state.billing.invoices as any[]).unshift(created)
     return clone(created)
   }
   if (pathname === "/api/v1/admin/reports/schedules" && method === "GET") return { items: clone(state.report_schedules) }
@@ -2235,14 +2300,14 @@ function handleJson(path: string, init?: RequestInit): unknown {
       last_run_at: null,
       next_run_at: daysFromNow(1),
     }
-    ;(state.report_schedules as any[]).unshift(created)
+      ; (state.report_schedules as any[]).unshift(created)
     return clone(created)
   }
   if (pathname === "/api/v1/admin/reports/schedules/runs" && method === "GET") return { items: clone(state.report_runs) }
   if (pathname === "/api/v1/admin/reports/schedules/run-due" && method === "POST") {
     const enabled = (state.report_schedules as any[]).filter((row) => row.enabled !== false)
     for (const schedule of enabled) {
-      ;(state.report_runs as any[]).unshift({
+      ; (state.report_runs as any[]).unshift({
         id: nextId("report-run"),
         schedule_id: schedule.id,
         status: "completed",
@@ -2336,7 +2401,7 @@ function handleJson(path: string, init?: RequestInit): unknown {
       created_at: nowIso(),
       updated_at: nowIso(),
     }
-    ;(state.campaigns as any[]).unshift(created)
+      ; (state.campaigns as any[]).unshift(created)
     return clone(created)
   }
   if (pathname.match(/^\/api\/v1\/admin\/campaigns\/[^/]+$/) && method === "PATCH") {
@@ -2388,7 +2453,7 @@ function handleJson(path: string, init?: RequestInit): unknown {
         skipped += 1
         continue
       }
-      ;(state.campaign_runs as any[]).unshift({
+      ; (state.campaign_runs as any[]).unshift({
         id: nextId("run"),
         campaign_id: campaignId,
         enrollment_id: nextId("enroll"),
@@ -2427,7 +2492,7 @@ function handleJson(path: string, init?: RequestInit): unknown {
       created_at: nowIso(),
       updated_at: nowIso(),
     }
-    ;(state.sequences as any[]).unshift(created)
+      ; (state.sequences as any[]).unshift(created)
     return clone(created)
   }
   if (pathname.match(/^\/api\/v1\/admin\/sequences\/[^/]+\/simulate$/) && method === "POST") {
@@ -2481,7 +2546,7 @@ function handleJson(path: string, init?: RequestInit): unknown {
       confidence: 0.78,
       created_at: nowIso(),
     }
-    ;(state.content_generations as any[]).unshift(generated)
+      ; (state.content_generations as any[]).unshift(generated)
     return clone(generated)
   }
 
@@ -2512,7 +2577,7 @@ function handleJson(path: string, init?: RequestInit): unknown {
       created_at: nowIso(),
       finished_at: nowIso(),
     }
-    ;(state.enrichment_jobs as any[]).unshift(job)
+      ; (state.enrichment_jobs as any[]).unshift(job)
     return clone(job)
   }
   if (pathname.match(/^\/api\/v1\/admin\/enrichment\/[^/]+$/) && method === "GET") {
@@ -2545,39 +2610,39 @@ function handleJson(path: string, init?: RequestInit): unknown {
     if (autoConfirm) {
       for (const action of actions) {
         const now = nowIso()
-        ;(state.tasks as any[]).unshift({
-          id: nextId("task"),
-          title: String(action.payload.title || "Tache IA"),
-          description: "Tache generee automatiquement par l'assistant.",
-          status: "To Do",
-          priority: "Medium",
-          due_date: daysFromNow(2),
-          assigned_to: "Vous",
-          lead_id: String(action.payload.lead_id || ""),
-          project_id: null,
-          project_name: null,
-          channel: String(action.payload.channel || "email"),
-          sequence_step: 1,
-          source: "assistant",
-          rule_id: null,
-          related_score_snapshot: { total_score: 0, tier: "Tier C" },
-          subtasks: [],
-          comments: [],
-          attachments: [],
-          timeline: [
-            {
-              id: nextId("timeline"),
-              event_type: "task_created",
-              message: "Tache creee par assistant.",
-              actor: "assistant",
-              created_at: now,
-              metadata: {},
-            },
-          ],
-          created_at: now,
-          updated_at: now,
-          closed_at: null,
-        })
+          ; (state.tasks as any[]).unshift({
+            id: nextId("task"),
+            title: String(action.payload.title || "Tache IA"),
+            description: "Tache generee automatiquement par l'assistant.",
+            status: "To Do",
+            priority: "Medium",
+            due_date: daysFromNow(2),
+            assigned_to: "Vous",
+            lead_id: String(action.payload.lead_id || ""),
+            project_id: null,
+            project_name: null,
+            channel: String(action.payload.channel || "email"),
+            sequence_step: 1,
+            source: "assistant",
+            rule_id: null,
+            related_score_snapshot: { total_score: 0, tier: "Tier C" },
+            subtasks: [],
+            comments: [],
+            attachments: [],
+            timeline: [
+              {
+                id: nextId("timeline"),
+                event_type: "task_created",
+                message: "Tache creee par assistant.",
+                actor: "assistant",
+                created_at: now,
+                metadata: {},
+              },
+            ],
+            created_at: now,
+            updated_at: now,
+            closed_at: null,
+          })
       }
     }
     const run = {
@@ -2591,7 +2656,7 @@ function handleJson(path: string, init?: RequestInit): unknown {
       finished_at: autoConfirm ? nowIso() : null,
       actions,
     }
-    ;(state.assistant_runs as any[]).unshift(run)
+      ; (state.assistant_runs as any[]).unshift(run)
     return clone(run)
   }
   if (pathname === "/api/v1/admin/assistant/prospect/confirm" && method === "POST") {
@@ -2757,7 +2822,7 @@ function handleJson(path: string, init?: RequestInit): unknown {
         closed_at: null,
       }
     })
-    ;(state.tasks as any[]).unshift(...createdRows)
+      ; (state.tasks as any[]).unshift(...createdRows)
     return { created_count: createdRows.length }
   }
   if (pathname.match(/^\/api\/v1\/admin\/assistant\/prospect\/runs\/[^/]+$/) && method === "GET") {
@@ -2794,7 +2859,7 @@ export async function getMockBlobResponse(path: string, init?: RequestInit): Pro
     return new Blob([makeCsv((state.leads as any[]).map((l) => ({ id: l.id, first_name: l.first_name, last_name: l.last_name, email: l.email, company_name: l.company?.name || "", status: l.status })))], { type: "text/csv;charset=utf-8" })
   }
   if (url.pathname === "/api/v1/admin/reports/export/pdf") {
-    return new Blob([`PROSPECT MOCK REPORT\nGenerated at: ${nowIso()}\n`], { type: "text/plain;charset=utf-8" })
+    return new Blob([`PROSPECT MOCK REPORT\nGenerated at: ${nowIso()}\n`], { type: "application/pdf" })
   }
   throw new Error(`[MOCK] No blob mock data found for ${path}`)
 }

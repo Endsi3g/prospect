@@ -611,10 +611,58 @@ class AdminSearchResultItem(BaseModel):
     href: str
 
 
+class AdminHelpSection(BaseModel):
+    id: str
+    label: str
+    items: list[dict[str, str]]
+
+
+class AdminHelpQuickAction(BaseModel):
+    id: str
+    label: str
+    href: str
+    scope: str = "global"
+
+
 class AdminHelpPayload(BaseModel):
     support_email: EmailStr
     faqs: list[dict[str, str]]
     links: list[dict[str, str]]
+    sections: list[AdminHelpSection] | None = None
+    quick_actions: list[AdminHelpQuickAction] | None = None
+    updated_at: str | None = None
+
+
+class AdminSecretStateItem(BaseModel):
+    key: str
+    configured: bool
+    source: str
+    masked_value: str
+    updated_at: str | None = None
+
+
+class AdminSecretListResponse(BaseModel):
+    items: list[AdminSecretStateItem]
+
+
+class AdminCompagnieDocItem(BaseModel):
+    doc_id: str
+    title: str
+    ext: str
+    status: str
+    size_bytes: int
+    updated_at: str | None = None
+    raw_path: str | None = None
+    processed: dict[str, str | None] | None = None
+
+
+class AdminCompagnieDocsResponse(BaseModel):
+    generated_at: str
+    stats: dict[str, int]
+    page: int
+    page_size: int
+    total: int
+    items: list[AdminCompagnieDocItem]
 
 
 class AdminDiagnosticsRunRequest(BaseModel):
@@ -652,6 +700,12 @@ class AdminIntegrationsPayload(BaseModel):
 class AdminSecretUpsertPayload(BaseModel):
     key: str = Field(min_length=1)
     value: str = Field(min_length=1)
+
+
+class AdminSendEmailRequest(BaseModel):
+    subject: str = Field(min_length=1)
+    body: str = Field(min_length=1)
+    to_email: EmailStr | None = None  # If null, use lead email
 
 
 class AdminAccountPayload(BaseModel):
@@ -787,6 +841,16 @@ class ContentGenerateRequest(BaseModel):
     provider: str = "deterministic"
 
 
+class LeadCaptureRequest(BaseModel):
+    email: EmailStr
+    first_name: str | None = None
+    last_name: str | None = None
+    company_name: str | None = None
+    phone: str | None = None
+    message: str | None = None
+    source: str = "web_form"
+
+
 class EnrichmentRunRequest(BaseModel):
     query: str = Field(min_length=2)
     lead_id: str | None = None
@@ -876,7 +940,7 @@ def _default_jwt_secret() -> str:
 
 
 def _get_jwt_secret() -> str:
-    return os.getenv("JWT_SECRET", _default_jwt_secret())
+    return _sec_svc.secrets_manager.resolve_secret(None, "JWT_SECRET", _default_jwt_secret())
 
 
 def _get_access_token_ttl_minutes() -> int:
@@ -3617,7 +3681,7 @@ def _update_opportunity_payload(
         )
         row.stage_entered_at = datetime.utcnow()
     if "amount" in update_data:
-        row.amount = float(payload.amount) if payload.amount is not None else None
+        row.amount = float(payload.amount) if payload.amount is not None else 0.0
     if "probability" in update_data:
         row.probability = int(payload.probability or 0)
     if "close_date" in update_data:
@@ -4517,32 +4581,122 @@ def _search_payload(db: Session, query: str, limit: int) -> dict[str, Any]:
     }
 
 
+def _get_compagnie_docs_payload(
+    *,
+    search: str | None = None,
+    status_filter: str | None = None,
+    ext_filter: str | None = None,
+    page: int = 1,
+    page_size: int = 24,
+) -> AdminCompagnieDocsResponse:
+    index_path = Path("assets/reference/compagnie_docs/index/corpus_index.json")
+    if not index_path.exists():
+        raise HTTPException(status_code=404, detail="Corpus index not found.")
+    
+    try:
+        data = json.loads(index_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to parse corpus index: {exc}")
+
+    docs = data.get("documents", [])
+    
+    # Filter
+    if search:
+        search = search.lower()
+        docs = [
+            d for d in docs 
+            if search in d.get("original_name", "").lower() 
+            or search in d.get("doc_id", "").lower()
+        ]
+    
+    if status_filter:
+        docs = [d for d in docs if d.get("status") == status_filter]
+    
+    if ext_filter:
+        docs = [d for d in docs if d.get("ext") == ext_filter]
+
+    total = len(docs)
+    start = (page - 1) * page_size
+    end = start + page_size
+    items = docs[start:end]
+
+    serialized_items = []
+    for d in items:
+        serialized_items.append(
+            AdminCompagnieDocItem(
+                doc_id=d["doc_id"],
+                title=d["original_name"],
+                ext=d["ext"],
+                status=d["status"],
+                size_bytes=d["size_bytes"],
+                updated_at=d.get("processing", {}).get("processed_at"),
+                raw_path=d.get("raw_path"),
+                processed=d.get("processing", {}).get("pdf") or d.get("processing", {}).get("fig")
+            )
+        )
+
+    return AdminCompagnieDocsResponse(
+        generated_at=data.get("generated_at", ""),
+        stats=data.get("stats", {}),
+        page=page,
+        page_size=page_size,
+        total=total,
+        items=serialized_items
+    )
+
+
 def _help_payload(db: Session) -> dict[str, Any]:
     settings = _get_admin_settings_payload(db)
     payload = AdminHelpPayload(
         support_email=settings["support_email"],
         faqs=[
             {
-                "question": "Comment creer un lead rapidement ?",
-                "answer": "Utilisez le bouton 'Creation rapide de lead' dans la barre laterale.",
+                "question": "Comment créer un lead rapidement ?",
+                "answer": "Utilisez le bouton 'Création rapide de lead' dans la barre latérale.",
             },
             {
-                "question": "Comment convertir une tache en projet ?",
-                "answer": "Depuis la table des taches, utilisez l'action 'Convertir en projet'.",
+                "question": "Comment convertir une tâche en projet ?",
+                "answer": "Depuis la table des tâches, utilisez l'action 'Convertir en projet'.",
             },
             {
-                "question": "Ou modifier les parametres globaux ?",
-                "answer": "Allez sur la page Parametres puis enregistrez vos preferences.",
+                "question": "Où modifier les paramètres globaux ?",
+                "answer": "Allez sur la page Paramètres puis enregistrez vos préférences.",
             },
         ],
         links=[
             {"label": "Centre d'aide complet", "href": "/help"},
-            {"label": "Bibliotheque commerciale", "href": "/library"},
-            {"label": "Rapports d'equipe", "href": "/reports"},
-            {"label": "Assistant operations", "href": "/assistant"},
+            {"label": "Bibliothèque commerciale", "href": "/library"},
+            {"label": "Rapports d'équipe", "href": "/reports"},
+            {"label": "Assistant opérations", "href": "/assistant"},
             {"label": "Console backend", "href": "/admin"},
             {"label": "Guide API FastAPI", "href": "https://fastapi.tiangolo.com/"},
         ],
+        sections=[
+            {
+                "id": "guides",
+                "label": "Guides d'utilisation",
+                "items": [
+                    {"label": "Démarrage rapide", "href": "/help/guides/quickstart"},
+                    {"label": "Sourcing de leads", "href": "/help/guides/sourcing"},
+                    {"label": "Automatisation des séquences", "href": "/help/guides/sequences"},
+                ]
+            },
+            {
+                "id": "api",
+                "label": "Documentation API",
+                "items": [
+                    {"label": "Référence REST v1", "href": "/help/api/reference"},
+                    {"label": "Authentification JWT", "href": "/help/api/auth"},
+                    {"label": "Webhooks & Événements", "href": "/help/api/webhooks"},
+                ]
+            }
+        ],
+        quick_actions=[
+            {"id": "import", "label": "Importer des leads", "href": "/leads", "scope": "sales"},
+            {"id": "config", "label": "Configurer l'IA", "href": "/settings", "scope": "admin"},
+            {"id": "docs", "label": "Parcourir la bibliothèque", "href": "/library", "scope": "global"},
+        ],
+        updated_at=datetime.now(timezone.utc).isoformat()
     )
     return payload.model_dump()
 
@@ -5302,18 +5456,24 @@ def _is_notification_enabled(db: Session, *, channel: str, event_key: str) -> bo
     return bool(row.enabled)
 
 
-def _send_notification_email(subject: str, message: str, recipient: str) -> None:
-    # Local fallback: only persist notifications when SMTP is not configured.
+def _send_system_email(
+    db: Session | None,
+    *,
+    subject: str,
+    message: str,
+    recipient: str,
+) -> bool:
     smtp_host = os.getenv("SMTP_HOST")
     if not smtp_host:
-        return
+        logger.warning("SMTP_HOST not configured. Email skipped.", extra={"subject": subject})
+        return False
 
     import smtplib
     from email.message import EmailMessage
 
     smtp_port = int(os.getenv("SMTP_PORT", "587"))
     smtp_user = os.getenv("SMTP_USERNAME")
-    smtp_pass = os.getenv("SMTP_PASSWORD", "")
+    smtp_pass = _sec_svc.secrets_manager.resolve_secret(db, "SMTP_PASSWORD")
     smtp_from = os.getenv("SMTP_FROM", "noreply@prospect.local")
     smtp_tls = os.getenv("SMTP_USE_TLS", "1").strip().lower() not in {"0", "false", "no"}
 
@@ -5323,12 +5483,22 @@ def _send_notification_email(subject: str, message: str, recipient: str) -> None
     email["To"] = recipient
     email.set_content(message)
 
-    with smtplib.SMTP(smtp_host, smtp_port, timeout=10) as smtp:
-        if smtp_tls:
-            smtp.starttls()
-        if smtp_user:
-            smtp.login(smtp_user, smtp_pass)
-        smtp.send_message(email)
+    try:
+        with smtplib.SMTP(smtp_host, smtp_port, timeout=10) as smtp:
+            if smtp_tls:
+                smtp.starttls()
+            if smtp_user:
+                smtp.login(smtp_user, smtp_pass)
+            smtp.send_message(email)
+        return True
+    except Exception as exc:
+        logger.error("Failed to send system email.", extra={"error": str(exc), "recipient": recipient})
+        return False
+
+
+def _send_notification_email(subject: str, message: str, recipient: str) -> None:
+    # Legacy wrapper for background notification tasks
+    _send_system_email(None, subject=subject, message=message, recipient=recipient)
 
 
 def _create_notification_payload(
@@ -7255,6 +7425,43 @@ def create_app() -> FastAPI:
     ) -> dict[str, Any]:
         return _build_lead_history_payload(db, lead_id=lead_id, window=window)
 
+    @admin_v1.post("/leads/{lead_id}/send-email")
+    def send_lead_email_v1(
+        lead_id: str,
+        payload: AdminSendEmailRequest,
+        actor: str = "admin",
+        db: Session = Depends(get_db),
+    ) -> dict[str, Any]:
+        lead = _get_lead_or_404(db, lead_id)
+        recipient = str(payload.to_email) if payload.to_email else lead.email
+        
+        ok = _send_system_email(
+            db,
+            subject=payload.subject,
+            message=payload.body,
+            recipient=recipient
+        )
+        
+        if not ok:
+            raise HTTPException(status_code=500, detail="Échec de l'envoi de l'email (vérifiez la config SMTP).")
+            
+        # Log interaction
+        interaction = DBInteraction(
+            lead_id=lead.id,
+            type="email",
+            timestamp=datetime.now(),
+            details={
+                "subject": payload.subject,
+                "sent_by": actor,
+                "recipient": recipient,
+                "source": "manual_ui"
+            }
+        )
+        db.add(interaction)
+        db.commit()
+        
+        return {"success": True, "recipient": recipient}
+
 
     @admin_v1.post("/leads")
     def create_lead_v1(
@@ -8347,13 +8554,13 @@ def create_app() -> FastAPI:
 
     @admin_v1.get("/secrets/schema")
     def get_secrets_schema_v1() -> dict[str, Any]:
-        return _sec_svc.get_secret_schema()
+        return _sec_svc.secrets_manager.get_schema()
 
-    @admin_v1.get("/secrets")
-    def list_secrets_v1(db: Session = Depends(get_db)) -> dict[str, Any]:
+    @admin_v1.get("/secrets", response_model=AdminSecretListResponse)
+    def list_secrets_v1(db: Session = Depends(get_db)) -> AdminSecretListResponse:
         try:
-            _sec_svc.migrate_plaintext_integration_secrets_if_needed(db)
-            return _sec_svc.list_secret_states(db)
+            _sec_svc.secrets_manager.migrate_plaintext_integration_secrets_if_needed(db)
+            return _sec_svc.secrets_manager.list_secret_states(db)
         except _sec_svc.SecretsManagerError as exc:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -8368,7 +8575,7 @@ def create_app() -> FastAPI:
     ) -> dict[str, Any]:
         normalized_key = payload.key.strip()
         try:
-            result = _sec_svc.upsert_secret(
+            result = _sec_svc.secrets_manager.upsert_secret(
                 db,
                 key=normalized_key,
                 value=payload.value,
@@ -8398,7 +8605,7 @@ def create_app() -> FastAPI:
     ) -> dict[str, Any]:
         normalized_key = key.strip()
         try:
-            result = _sec_svc.delete_secret(
+            result = _sec_svc.secrets_manager.delete_secret(
                 db,
                 key=normalized_key,
                 actor=actor,
@@ -8419,62 +8626,24 @@ def create_app() -> FastAPI:
         )
         return result
 
-    @admin_v1.get("/integrations")
-    def integrations_v1(db: Session = Depends(get_db)) -> dict[str, Any]:
-        return _list_integrations_payload(db)
-
-    @admin_v1.put("/integrations")
-    def put_integrations_v1(
-        payload: AdminIntegrationsPayload,
-        actor: str = "admin",
-        db: Session = Depends(get_db),
-    ) -> dict[str, Any]:
-        return _save_integrations_payload(db, payload, actor=actor)
-
-    @admin_v1.get("/webhooks")
-    def list_webhooks_v1(db: Session = Depends(get_db)) -> dict[str, Any]:
-        return _list_webhooks_payload(db)
-
-    @admin_v1.post("/webhooks")
-    def create_webhook_v1(
-        payload: AdminWebhookCreateRequest,
-        actor: str = "admin",
-        db: Session = Depends(get_db),
-    ) -> dict[str, Any]:
-        return _create_webhook_payload(db, payload, actor=actor)
-
-    @admin_v1.delete("/webhooks/{webhook_id}")
-    def delete_webhook_v1(
-        webhook_id: str,
-        actor: str = "admin",
-        db: Session = Depends(get_db),
-    ) -> dict[str, Any]:
-        return _delete_webhook_payload(db, webhook_id, actor=actor)
-
-    @admin_v1.get("/search")
-    def search_v1(
-        db: Session = Depends(get_db),
-        q: str = Query(default=""),
-        limit: int = Query(default=20, ge=1, le=50),
-    ) -> dict[str, Any]:
-        return _search_payload(db, query=q, limit=limit)
-
-    @admin_v1.get("/research/web")
-    def web_research_v1(
-        db: Session = Depends(get_db),
-        q: str = Query(default=""),
-        provider: str = Query(default="auto"),
-        limit: int = Query(default=8, ge=1, le=25),
-    ) -> dict[str, Any]:
-        return _web_research_payload(
-            db,
-            query=q,
-            provider=provider,
-            limit=limit,
+    @admin_v1.get("/docs/compagnie", response_model=AdminCompagnieDocsResponse)
+    def list_compagnie_docs_v1(
+        q: str | None = Query(default=None),
+        status: str | None = Query(default=None),
+        ext: str | None = Query(default=None),
+        page: int = Query(default=1, ge=1),
+        page_size: int = Query(default=24, ge=1, le=100),
+    ) -> AdminCompagnieDocsResponse:
+        return _get_compagnie_docs_payload(
+            search=q,
+            status_filter=status,
+            ext_filter=ext,
+            page=page,
+            page_size=page_size
         )
 
-    @admin_v1.get("/help")
-    def help_v1(db: Session = Depends(get_db)) -> dict[str, Any]:
+    @admin_v1.get("/help", response_model=AdminHelpPayload)
+    def get_help_v1(db: Session = Depends(get_db)) -> AdminHelpPayload:
         return _help_payload(db)
 
     @admin_v1.post("/import/csv/preview")
@@ -8704,6 +8873,50 @@ def create_app() -> FastAPI:
                 metadata={"action_ids": body.action_ids},
             )
             return {"rejected": True, "count": count}
+
+    @app.post("/api/v1/capture/lead")
+    def capture_lead_public(
+        payload: LeadCaptureRequest,
+        db: Session = Depends(get_db),
+    ) -> dict[str, Any]:
+        """Public endpoint for lead capture (e.g. from website form)."""
+        existing = db.query(DBLead).filter(DBLead.email == str(payload.email)).first()
+        if existing:
+            return {"status": "already_exists", "lead_id": existing.id}
+            
+        company_name = (payload.company_name or "Unknown").strip()
+        company = db.query(DBCompany).filter(DBCompany.name == company_name).first()
+        if not company:
+            company = DBCompany(name=company_name)
+            db.add(company)
+            db.flush()
+            
+        db_lead = DBLead(
+            id=str(payload.email),
+            email=str(payload.email),
+            first_name=(payload.first_name or "").strip() or "Web",
+            last_name=(payload.last_name or "").strip() or "Capture",
+            phone=payload.phone,
+            company_id=company.id,
+            status=LeadStatus.NEW,
+            source=payload.source,
+            details={"web_message": payload.message}
+        )
+        _funnel_svc.ensure_lead_funnel_defaults(db, db_lead)
+        db.add(db_lead)
+        db.commit()
+        
+        _emit_event_notification(
+            db,
+            event_key="lead_created",
+            title="Nouveau lead (Capture Web)",
+            message=f"{db_lead.email} a rempli un formulaire.",
+            entity_type="lead",
+            entity_id=db_lead.id,
+            link_href=f"/leads/{db_lead.id}",
+        )
+        
+        return {"status": "created", "lead_id": db_lead.id}
 
     api_v1.include_router(auth_v1)
     api_v1.include_router(admin_v1)

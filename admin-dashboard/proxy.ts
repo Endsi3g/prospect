@@ -16,7 +16,7 @@ function toLoginRedirect(request: NextRequest): NextResponse {
   return NextResponse.redirect(redirectUrl)
 }
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const { pathname, hostname } = request.nextUrl
   const hasAccessCookie = Boolean(request.cookies.get(ACCESS_COOKIE_NAME)?.value)
   const hasDemoCookie = request.cookies.get(DEMO_COOKIE_NAME)?.value === "1"

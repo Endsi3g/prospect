@@ -548,7 +548,7 @@ export default function OpportunitiesPage() {
 
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent className="sm:max-w-xl">
-          <SheetHeader><SheetTitle>Creer opportunite</SheetTitle><SheetDescription>Renseignez le prospect, le montant, l'etape, la probabilite et la date de cloture prevue.</SheetDescription></SheetHeader>
+          <SheetHeader><SheetTitle>Créer une opportunité</SheetTitle><SheetDescription>Renseignez le prospect, le montant, l'étape, la probabilité et la date de clôture prévue.</SheetDescription></SheetHeader>
           <div className="mt-4 space-y-4">
             <div className="space-y-2">
               <Label>Prospect</Label>

@@ -27,6 +27,15 @@ $apps = @(
 $results = @()
 $failed = $false
 
+# Pre-flight check: APP_ENCRYPTION_KEY
+$envFile = Join-Path $RootDir ".env"
+if (Test-Path $envFile) {
+    $envContent = Get-Content $envFile -Raw
+    if ($envContent -notmatch "APP_ENCRYPTION_KEY=[a-zA-Z0-9_-]{32,}") {
+        Write-Host "  [WARN] APP_ENCRYPTION_KEY missing or invalid in .env. Secrets management may fail." -ForegroundColor Yellow
+    }
+}
+
 foreach ($app in $apps) {
     Write-Host ""
     Write-Host "============================================" -ForegroundColor Cyan
@@ -37,6 +46,17 @@ foreach ($app in $apps) {
         Write-Host "  [SKIP] Directory not found: $($app.Path)" -ForegroundColor Yellow
         $results += @{ Name = $app.Name; Status = "SKIPPED" }
         continue
+    }
+
+    # Verify proxy.ts if it's admin-dashboard
+    if ($app.Name -eq "admin-dashboard") {
+        $proxyPath = Join-Path $app.Path "proxy.ts"
+        if (-not (Test-Path $proxyPath)) {
+            Write-Host "  [ERROR] proxy.ts (new convention) not found in admin-dashboard." -ForegroundColor Red
+            $results += @{ Name = $app.Name; Status = "MISSING_PROXY" }
+            $failed = $true
+            continue
+        }
     }
 
     Push-Location $app.Path

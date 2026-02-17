@@ -7,7 +7,9 @@ import { ExportCsvButton } from "@/components/export-csv-button"
 import { ImportCsvSheet } from "@/components/import-csv-sheet"
 import { AppShell } from "@/components/layout/app-shell"
 import { Lead, LeadsTable } from "@/components/leads-table"
+import { LeadsKanban } from "@/components/leads-kanban"
 import { SyncStatus } from "@/components/sync-status"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { EmptyState } from "@/components/ui/empty-state"
 import { ErrorState } from "@/components/ui/error-state"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -50,6 +52,7 @@ function toBooleanQueryValue(value: TriStateFilter): string {
 }
 
 export default function LeadsPage() {
+  const [view, setView] = React.useState<"table" | "kanban">("table")
   const [page, setPage] = React.useState(1)
   const pageSize = 25
   const [search, setSearch] = React.useState("")
@@ -71,12 +74,33 @@ export default function LeadsPage() {
   const [sort, setSort] = React.useState("created_at")
   const [order, setOrder] = React.useState("desc")
 
-  // Debounce search for API calls
-  const [debouncedSearch, setDebouncedSearch] = React.useState(search)
+  // Debounce text filters for API calls
+  const [debounced, setDebounced] = React.useState({
+    search,
+    segment,
+    company,
+    industry,
+    location,
+    tag,
+    minScore,
+    maxScore,
+  })
+
   React.useEffect(() => {
-    const timer = setTimeout(() => setDebouncedSearch(search), 500)
+    const timer = setTimeout(() => {
+      setDebounced({
+        search,
+        segment,
+        company,
+        industry,
+        location,
+        tag,
+        minScore,
+        maxScore,
+      })
+    }, 500)
     return () => clearTimeout(timer)
-  }, [search])
+  }, [search, segment, company, industry, location, tag, minScore, maxScore])
 
   const queryStatus = status === "ALL" ? "" : status
   const queryTier = tier === "ALL" ? "" : tier
@@ -85,20 +109,20 @@ export default function LeadsPage() {
     const params = new URLSearchParams()
     params.set("page", String(page))
     params.set("page_size", String(pageSize))
-    params.set("q", debouncedSearch)
+    params.set("q", debounced.search)
     params.set("status", queryStatus)
     params.set("sort", sort)
     params.set("order", order)
 
-    if (segment.trim()) params.set("segment", segment.trim())
+    if (debounced.segment.trim()) params.set("segment", debounced.segment.trim())
     if (queryTier) params.set("tier", queryTier)
     if (queryHeatStatus) params.set("heat_status", queryHeatStatus)
-    if (company.trim()) params.set("company", company.trim())
-    if (industry.trim()) params.set("industry", industry.trim())
-    if (location.trim()) params.set("location", location.trim())
-    if (tag.trim()) params.set("tag", tag.trim())
-    if (minScore.trim()) params.set("min_score", minScore.trim())
-    if (maxScore.trim()) params.set("max_score", maxScore.trim())
+    if (debounced.company.trim()) params.set("company", debounced.company.trim())
+    if (debounced.industry.trim()) params.set("industry", debounced.industry.trim())
+    if (debounced.location.trim()) params.set("location", debounced.location.trim())
+    if (debounced.tag.trim()) params.set("tag", debounced.tag.trim())
+    if (debounced.minScore.trim()) params.set("min_score", debounced.minScore.trim())
+    if (debounced.maxScore.trim()) params.set("max_score", debounced.maxScore.trim())
     if (createdFrom) params.set("created_from", createdFrom)
     if (createdTo) params.set("created_to", createdTo)
 
@@ -113,19 +137,12 @@ export default function LeadsPage() {
   }, [
     page,
     pageSize,
-    debouncedSearch,
+    debounced,
     queryStatus,
     sort,
     order,
-    segment,
     queryTier,
     queryHeatStatus,
-    company,
-    industry,
-    location,
-    tag,
-    minScore,
-    maxScore,
     createdFrom,
     createdTo,
     hasEmail,
@@ -170,9 +187,17 @@ export default function LeadsPage() {
     <AppShell>
       <div className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
         <h2 className="text-3xl font-bold tracking-tight">Leads</h2>
-        <div className="flex flex-wrap items-center gap-2">
-          <ExportCsvButton entity="leads" />
-          <ImportCsvSheet onImported={() => void mutate()} />
+        <div className="flex items-center gap-2">
+          <Tabs value={view} onValueChange={(v) => setView(v as "table" | "kanban")} className="mr-2">
+            <TabsList>
+              <TabsTrigger value="table">Liste</TabsTrigger>
+              <TabsTrigger value="kanban">Kanban</TabsTrigger>
+            </TabsList>
+          </Tabs>
+          <div className="flex flex-wrap items-center gap-2">
+            <ExportCsvButton entity="leads" />
+            <ImportCsvSheet onImported={() => void mutate()} />
+          </div>
         </div>
       </div>
       <SyncStatus updatedAt={updatedAt} onRefresh={() => void mutate()} />
@@ -187,7 +212,7 @@ export default function LeadsPage() {
           title="Impossible de charger les leads."
           description={
             loadingTimedOut
-              ? "Le chargement prend trop de temps. Vérifiez la connectivite API et reessayez."
+              ? "Le chargement prend trop de temps. Vérifiez la connectivité API et réessayez."
               : error instanceof Error
                 ? error.message
                 : "La liste des leads est indisponible pour le moment."
@@ -202,102 +227,107 @@ export default function LeadsPage() {
           description="Utilisez 'Creation rapide de lead' dans la sidebar ou importez un CSV pour demarrer."
         />
       ) : (
-        <LeadsTable
-          data={leads}
-          total={data?.total || 0}
-          page={page}
-          pageSize={pageSize}
-          search={search}
-          status={status}
-          segment={segment}
-          tier={tier}
-          heatStatus={heatStatus}
-          company={company}
-          industry={industry}
-          location={location}
-          tag={tag}
-          minScore={minScore}
-          maxScore={maxScore}
-          createdFrom={createdFrom}
-          createdTo={createdTo}
-          hasEmail={hasEmail}
-          hasPhone={hasPhone}
-          hasLinkedin={hasLinkedin}
-          sort={sort}
-          order={order}
-          onSearchChange={(val) => {
-            setSearch(val)
-            setPage(1)
-          }}
-          onStatusChange={(val) => {
-            setStatus(val)
-            setPage(1)
-          }}
-          onSegmentChange={(val) => {
-            setSegment(val)
-            setPage(1)
-          }}
-          onTierChange={(val) => {
-            setTier(val)
-            setPage(1)
-          }}
-          onHeatStatusChange={(val) => {
-            setHeatStatus(val)
-            setPage(1)
-          }}
-          onCompanyChange={(val) => {
-            setCompany(val)
-            setPage(1)
-          }}
-          onIndustryChange={(val) => {
-            setIndustry(val)
-            setPage(1)
-          }}
-          onLocationChange={(val) => {
-            setLocation(val)
-            setPage(1)
-          }}
-          onTagChange={(val) => {
-            setTag(val)
-            setPage(1)
-          }}
-          onMinScoreChange={(val) => {
-            setMinScore(val)
-            setPage(1)
-          }}
-          onMaxScoreChange={(val) => {
-            setMaxScore(val)
-            setPage(1)
-          }}
-          onCreatedFromChange={(val) => {
-            setCreatedFrom(val)
-            setPage(1)
-          }}
-          onCreatedToChange={(val) => {
-            setCreatedTo(val)
-            setPage(1)
-          }}
-          onHasEmailChange={(val) => {
-            setHasEmail(val as TriStateFilter)
-            setPage(1)
-          }}
-          onHasPhoneChange={(val) => {
-            setHasPhone(val as TriStateFilter)
-            setPage(1)
-          }}
-          onHasLinkedinChange={(val) => {
-            setHasLinkedin(val as TriStateFilter)
-            setPage(1)
-          }}
-          onPageChange={setPage}
-          onSortChange={(s, o) => {
-            setSort(s)
-            setOrder(o)
-          }}
-          onDataChanged={() => void mutate()}
-        />
+        <div className="mt-4">
+          {view === "table" ? (
+            <LeadsTable
+              data={leads}
+              total={data?.total || 0}
+              page={page}
+              pageSize={pageSize}
+              search={search}
+              status={status}
+              segment={segment}
+              tier={tier}
+              heatStatus={heatStatus}
+              company={company}
+              industry={industry}
+              location={location}
+              tag={tag}
+              minScore={minScore}
+              maxScore={maxScore}
+              createdFrom={createdFrom}
+              createdTo={createdTo}
+              hasEmail={hasEmail}
+              hasPhone={hasPhone}
+              hasLinkedin={hasLinkedin}
+              sort={sort}
+              order={order}
+              onSearchChange={(val) => {
+                setSearch(val)
+                setPage(1)
+              }}
+              onStatusChange={(val) => {
+                setStatus(val)
+                setPage(1)
+              }}
+              onSegmentChange={(val) => {
+                setSegment(val)
+                setPage(1)
+              }}
+              onTierChange={(val) => {
+                setTier(val)
+                setPage(1)
+              }}
+              onHeatStatusChange={(val) => {
+                setHeatStatus(val)
+                setPage(1)
+              }}
+              onCompanyChange={(val) => {
+                setCompany(val)
+                setPage(1)
+              }}
+              onIndustryChange={(val) => {
+                setIndustry(val)
+                setPage(1)
+              }}
+              onLocationChange={(val) => {
+                setLocation(val)
+                setPage(1)
+              }}
+              onTagChange={(val) => {
+                setTag(val)
+                setPage(1)
+              }}
+              onMinScoreChange={(val) => {
+                setMinScore(val)
+                setPage(1)
+              }}
+              onMaxScoreChange={(val) => {
+                setMaxScore(val)
+                setPage(1)
+              }}
+              onCreatedFromChange={(val) => {
+                setCreatedFrom(val)
+                setPage(1)
+              }}
+              onCreatedToChange={(val) => {
+                setCreatedTo(val)
+                setPage(1)
+              }}
+              onHasEmailChange={(val) => {
+                setHasEmail(val as TriStateFilter)
+                setPage(1)
+              }}
+              onHasPhoneChange={(val) => {
+                setHasPhone(val as TriStateFilter)
+                setPage(1)
+              }}
+              onHasLinkedinChange={(val) => {
+                setHasLinkedin(val as TriStateFilter)
+                setPage(1)
+              }}
+              onPageChange={setPage}
+              onSortChange={(s, o) => {
+                setSort(s)
+                setOrder(o)
+              }}
+              onDataChanged={() => void mutate()}
+            />
+          ) : (
+            <LeadsKanban data={leads} onDataChanged={() => void mutate()} />
+          )}
+        </div>
       )}
     </AppShell>
   )
 }
-

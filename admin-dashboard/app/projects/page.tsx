@@ -24,6 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { useLoadingTimeout } from "@/hooks/use-loading-timeout"
 import { formatDateFr } from "@/lib/format"
 import { requestApi } from "@/lib/api"
 
@@ -261,11 +262,27 @@ export default function ProjectsPage() {
               ))
             ) : (
               <div className="col-span-full">
-                <EmptyState
-                  title="Aucun projet"
-                  description="Creez votre premier projet pour structurer vos actions commerciales."
-                  action={<Button onClick={createProject}>Creer un projet</Button>}
-                />
+                {projects.length === 0 ? (
+                  <EmptyState
+                    title="Aucun projet"
+                    description="Créez votre premier projet pour structurer vos actions commerciales."
+                    action={<Button onClick={createProject}>Créer un projet</Button>}
+                  />
+                ) : (
+                  <EmptyState
+                    title="Aucun résultat"
+                    description="Aucun projet ne correspond à vos filtres."
+                    action={
+                      <Button variant="outline" onClick={() => {
+                        setStatusFilter("all");
+                        setSearch("");
+                        setSortMode("newest");
+                      }}>
+                        Effacer les filtres
+                      </Button>
+                    }
+                  />
+                )}
               </div>
             )}
           </div>

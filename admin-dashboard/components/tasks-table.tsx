@@ -40,6 +40,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import { ResponsiveDataView } from "@/components/responsive/responsive-data-view"
 import { formatDateFr } from "@/lib/format"
 import { requestApi } from "@/lib/api"
@@ -104,6 +110,166 @@ function SortIcon({ column, sort, order }: { column: string; sort: string; order
   if (sort !== column) return null
   return <span className="ml-1">{order === "asc" ? "^" : "v"}</span>
 }
+
+const TaskRow = React.memo(({
+  task,
+  onEdit,
+  onDelete,
+  onConvert
+}: {
+  task: Task;
+  onEdit: (task: Task) => void;
+  onDelete: (task: Task) => void;
+  onConvert: (task: Task) => void;
+}) => (
+  <TableRow key={task.id}>
+    <TableCell>
+      <Link
+        href={`/tasks/${encodeURIComponent(task.id)}`}
+        className="font-medium text-foreground underline-offset-2 hover:underline"
+      >
+        {task.title}
+      </Link>
+      <div className="text-xs text-muted-foreground">#{task.id}</div>
+    </TableCell>
+    <TableCell>
+      <Badge variant={task.status === "Done" ? "default" : "secondary"}>
+        {task.status}
+      </Badge>
+    </TableCell>
+    <TableCell>
+      <Badge variant="outline" className={priorityClass(task.priority)}>
+        {task.priority}
+      </Badge>
+    </TableCell>
+    <TableCell>{formatDateFr(task.due_date || null)}</TableCell>
+    <TableCell>{task.assigned_to}</TableCell>
+    <TableCell>
+      <Badge variant="outline">{channelLabel(task.channel)}</Badge>
+    </TableCell>
+    <TableCell>
+      <Badge variant={task.source === "auto-rule" ? "default" : "secondary"}>
+        {sourceLabel(task.source)}
+      </Badge>
+    </TableCell>
+    <TableCell>
+      <span className="text-sm">{task.sequence_step ?? 1}</span>
+    </TableCell>
+    <TableCell className="text-right">
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="icon" className="size-8">
+            <IconDotsVertical className="size-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-56">
+          <DropdownMenuItem onClick={() => onConvert(task)}>
+            <IconFolderUp className="size-4 mr-2" />
+            Convertir en projet
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={() => onEdit(task)}>
+            <IconPencil className="size-4 mr-2" />
+            Modifier
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => onDelete(task)}>
+            <IconTrash className="size-4 mr-2" />
+            Supprimer
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </TableCell>
+  </TableRow>
+))
+
+TaskRow.displayName = "TaskRow"
+
+const TaskCard = React.memo(({
+  task,
+  onEdit,
+  onDelete,
+  onConvert
+}: {
+  task: Task;
+  onEdit: (task: Task) => void;
+  onDelete: (task: Task) => void;
+  onConvert: (task: Task) => void;
+}) => (
+  <div className="rounded-lg border p-3">
+    <div className="flex items-start justify-between gap-2">
+      <div className="min-w-0">
+        <Link
+          href={`/tasks/${encodeURIComponent(task.id)}`}
+          className="line-clamp-2 font-medium text-foreground underline-offset-2 hover:underline"
+        >
+          {task.title}
+        </Link>
+        <div className="text-xs text-muted-foreground">#{task.id}</div>
+      </div>
+      <Badge variant={task.status === "Done" ? "default" : "secondary"}>
+        {task.status}
+      </Badge>
+    </div>
+    <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+      <div>
+        <p className="text-muted-foreground">Priorité</p>
+        <Badge variant="outline" className={priorityClass(task.priority)}>
+          {task.priority}
+        </Badge>
+      </div>
+      <div>
+        <p className="text-muted-foreground">Échéance</p>
+        <p>{formatDateFr(task.due_date || null)}</p>
+      </div>
+      <div>
+        <p className="text-muted-foreground">Assigné à</p>
+        <p className="truncate">{task.assigned_to}</p>
+      </div>
+      <div>
+        <p className="text-muted-foreground">Canal</p>
+        <Badge variant="outline">{channelLabel(task.channel)}</Badge>
+      </div>
+      <div>
+        <p className="text-muted-foreground">Source</p>
+        <Badge variant={task.source === "auto-rule" ? "default" : "secondary"}>
+          {sourceLabel(task.source)}
+        </Badge>
+      </div>
+      <div>
+        <p className="text-muted-foreground">Étape</p>
+        <p>{task.sequence_step ?? 1}</p>
+      </div>
+    </div>
+    <div className="mt-2 flex justify-end">
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="icon" className="size-9">
+            <IconDotsVertical className="size-4" />
+            <span className="sr-only">Actions de la tache</span>
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-56">
+          <DropdownMenuItem onClick={() => onConvert(task)}>
+            <IconFolderUp className="size-4 mr-2" />
+            Convertir en projet
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={() => onEdit(task)}>
+            <IconPencil className="size-4 mr-2" />
+            Modifier
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => onDelete(task)}>
+            <IconTrash className="size-4 mr-2" />
+            Supprimer
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  </div>
+))
+
+TaskCard.displayName = "TaskCard"
+
 
 export function TasksTable({
   data,
@@ -300,77 +466,13 @@ export function TasksTable({
             </div>
           ) : (
             data.map((task) => (
-              <div key={task.id} className="rounded-lg border p-3">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <Link
-                      href={`/tasks/${encodeURIComponent(task.id)}`}
-                      className="line-clamp-2 font-medium text-foreground underline-offset-2 hover:underline"
-                    >
-                      {task.title}
-                    </Link>
-                    <div className="text-xs text-muted-foreground">#{task.id}</div>
-                  </div>
-                  <Badge variant={task.status === "Done" ? "default" : "secondary"}>
-                    {task.status}
-                  </Badge>
-                </div>
-                <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
-                  <div>
-                    <p className="text-muted-foreground">Priorite</p>
-                    <Badge variant="outline" className={priorityClass(task.priority)}>
-                      {task.priority}
-                    </Badge>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground">Echeance</p>
-                    <p>{formatDateFr(task.due_date || null)}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground">Assigne a</p>
-                    <p className="truncate">{task.assigned_to}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground">Canal</p>
-                    <Badge variant="outline">{channelLabel(task.channel)}</Badge>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground">Source</p>
-                    <Badge variant={task.source === "auto-rule" ? "default" : "secondary"}>
-                      {sourceLabel(task.source)}
-                    </Badge>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground">Etape</p>
-                    <p>{task.sequence_step ?? 1}</p>
-                  </div>
-                </div>
-                <div className="mt-2 flex justify-end">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="size-9">
-                        <IconDotsVertical className="size-4" />
-                        <span className="sr-only">Actions de la tache</span>
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-56">
-                      <DropdownMenuItem onClick={() => convertTaskToProject(task)}>
-                        <IconFolderUp className="size-4" />
-                        Convertir en projet
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem onClick={() => openEdit(task)}>
-                        <IconPencil className="size-4" />
-                        Modifier
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => deleteTask(task)}>
-                        <IconTrash className="size-4" />
-                        Supprimer
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-              </div>
+              <TaskCard
+                key={task.id}
+                task={task}
+                onEdit={openEdit}
+                onDelete={deleteTask}
+                onConvert={convertTaskToProject}
+              />
             ))
           )
         }
@@ -386,7 +488,17 @@ export function TasksTable({
                     Statut <SortIcon column="status" sort={sort} order={order} />
                   </TableHead>
                   <TableHead className="cursor-pointer hover:bg-muted/50" onClick={() => handleSort("priority")}>
-                    Priorite <SortIcon column="priority" sort={sort} order={order} />
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <div className="flex items-center gap-1">
+                            Priorite
+                            <SortIcon column="priority" sort={sort} order={order} />
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent>Niveau d'importance de la tâche</TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
                   </TableHead>
                   <TableHead className="cursor-pointer hover:bg-muted/50" onClick={() => handleSort("due_date")}>
                     Echeance <SortIcon column="due_date" sort={sort} order={order} />
@@ -395,10 +507,30 @@ export function TasksTable({
                     Assigne a <SortIcon column="assigned_to" sort={sort} order={order} />
                   </TableHead>
                   <TableHead className="cursor-pointer hover:bg-muted/50" onClick={() => handleSort("channel")}>
-                    Canal <SortIcon column="channel" sort={sort} order={order} />
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <div className="flex items-center gap-1">
+                            Canal
+                            <SortIcon column="channel" sort={sort} order={order} />
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent>Moyen de communication (Email, LinkedIn, etc.)</TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
                   </TableHead>
                   <TableHead className="cursor-pointer hover:bg-muted/50" onClick={() => handleSort("source")}>
-                    Source <SortIcon column="source" sort={sort} order={order} />
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <div className="flex items-center gap-1">
+                            Source
+                            <SortIcon column="source" sort={sort} order={order} />
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent>Origine de la tâche (ex: Automatique, Manuel)</TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
                   </TableHead>
                   <TableHead className="cursor-pointer hover:bg-muted/50" onClick={() => handleSort("sequence_step")}>
                     Etape <SortIcon column="sequence_step" sort={sort} order={order} />
@@ -408,64 +540,13 @@ export function TasksTable({
               </TableHeader>
               <TableBody>
                 {data.map((task) => (
-                  <TableRow key={task.id}>
-                    <TableCell>
-                      <Link
-                        href={`/tasks/${encodeURIComponent(task.id)}`}
-                        className="font-medium text-foreground underline-offset-2 hover:underline"
-                      >
-                        {task.title}
-                      </Link>
-                      <div className="text-xs text-muted-foreground">#{task.id}</div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={task.status === "Done" ? "default" : "secondary"}>
-                        {task.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className={priorityClass(task.priority)}>
-                        {task.priority}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>{formatDateFr(task.due_date || null)}</TableCell>
-                    <TableCell>{task.assigned_to}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{channelLabel(task.channel)}</Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={task.source === "auto-rule" ? "default" : "secondary"}>
-                        {sourceLabel(task.source)}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <span className="text-sm">{task.sequence_step ?? 1}</span>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="size-8">
-                            <IconDotsVertical className="size-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-56">
-                          <DropdownMenuItem onClick={() => convertTaskToProject(task)}>
-                            <IconFolderUp className="size-4" />
-                            Convertir en projet
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem onClick={() => openEdit(task)}>
-                            <IconPencil className="size-4" />
-                            Modifier
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => deleteTask(task)}>
-                            <IconTrash className="size-4" />
-                            Supprimer
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  </TableRow>
+                  <TaskRow
+                    key={task.id}
+                    task={task}
+                    onEdit={openEdit}
+                    onDelete={deleteTask}
+                    onConvert={convertTaskToProject}
+                  />
                 ))}
                 {data.length === 0 ? (
                   <TableRow>

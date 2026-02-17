@@ -18,6 +18,7 @@ def create_intent_client(
     api_key: Optional[str] = None,
     base_url: Optional[str] = None,
 ) -> Optional[IntentProviderClient]:
+    from ..admin.secrets_manager import secrets_manager
     selected = (provider or os.getenv("INTENT_PROVIDER", "mock")).strip().lower()
 
     if selected in {"none", "off", "disabled"}:
@@ -26,7 +27,7 @@ def create_intent_client(
     if selected == "mock":
         return MockIntentProviderClient()
 
-    api_key = api_key or os.getenv("INTENT_PROVIDER_API_KEY")
+    api_key = api_key or secrets_manager.resolve_secret(None, "INTENT_PROVIDER_API_KEY")
     base_url = base_url or os.getenv("INTENT_PROVIDER_BASE_URL")
     if not api_key:
         logger.warning(

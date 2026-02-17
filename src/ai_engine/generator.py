@@ -5,7 +5,8 @@ import os
 
 class MessageGenerator:
     def __init__(self):
-        api_key = os.getenv("OPENAI_API_KEY")
+        from ..admin.secrets_manager import secrets_manager
+        api_key = secrets_manager.resolve_secret(None, "OPENAI_API_KEY")
         self.client = OpenAI(api_key=api_key) if api_key else None
 
     def generate_gpt_content(self, prompt: str) -> str:

@@ -2,10 +2,11 @@
   "doc_id": "invoice-easy-5c7e5c239682",
   "original_name": "Invoice, Easy!.fig",
   "normalized_name": "invoice-easy",
-  "conversion_status": "failed",
-  "attempted_at": "2026-02-16T05:35:38.163855+00:00",
+  "conversion_status": "skipped",
+  "skip_reason": "missing_figma_credentials_or_file_key",
+  "attempted_at": "2026-02-17T03:43:38.889763+00:00",
   "conversion_outputs": [],
-  "error": "missing_figma_credentials_or_file_key",
+  "error": null,
   "raw_path": "./assets/reference/compagnie_docs/raw/invoice-easy-5c7e5c239682.fig",
   "sha256": "5c7e5c239682a26bc50e890a78a7dff89ce122de6408cf74bc358277263a9301"
 }

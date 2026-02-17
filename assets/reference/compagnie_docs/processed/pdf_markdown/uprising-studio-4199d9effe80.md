@@ -4,7 +4,7 @@
 - `source_path`: `./CompagnieDocs/UPRISING STUDIO.pdf`
 - `sha256`: `4199d9effe80f29d7dd3e8a6f75970fb31624e185bc309f88bf1ab7eba443f42`
 - `page_count`: `18`
-- `generated_at`: `2026-02-16T05:35:54.367836+00:00`
+- `generated_at`: `2026-02-17T03:44:27.351105+00:00`
 
 ## Page 1
 
@@ -550,88 +550,4 @@ PALETTE DE COULEURS DÉTAILLÉE
 #0A0A0A — NOIR PROFOND "UPRISING BLACK" 
 • HEX: #0A0A0A 
 • RGB: (10, 10, 10) 
-• Usage: 50% (backgrounds, textes sur clair) 
-#FFFFFF — BLANC PUR "CLARITY WHITE" 
-• HEX: #FFFFFF 
-• RGB: (255, 255, 255)
-
-• Usage: 40% (textes sur noir, espaces négatifs) 
-#D4AF37 — OR MÉTALLIQUE "GOLDEN REVOLUTION" 
-• HEX: #D4AF37 
-• RGB: (212, 175, 55) 
-• Usage: 7% (accents premium, CTA, highlights) 
-#DC143C — ROUGE RÉVOLUTION "FIRE RED" 
-• HEX: #DC143C 
-• RGB: (220, 20, 60) 
-• Usage: 3% (accents énergétiques, urgence) 
- 
-STRUCTURE TARIFAIRE CAD 
-PROGRAMME FOUNDATION (PME Locales) 
-Prix fixe : 3 500$ - 5 000$ CAD Maintenance : 200$/mois 
-Inclus : 
-• Audit stratégique complet 
-• Site Framer 5-8 pages 
-• Design Bold & Cinématique 
-• SEO local optimisé 
-• Responsive mobile/tablet/desktop 
-• Formation 30 min 
-• Support 30 jours 
-PROGRAMME CROISSANCE (Créateurs/Startups) 
-Prix fixe : 6 500$ - 10 000$ CAD Retainer : 400$/mois 
-Inclus : 
-• Tout du Foundation + 
-• Clone AI intégré 
-• Système de contenu automatisé 
-• Intégrations avancées (Make/Zapier) 
-• Analytics avancés
-
-• 3 mois de contenu social media 
-PROGRAMME RÉVOLUTION (Grands Comptes) 
-Prix fixe : 15 000$ - 25 000$+ CAD Partenariat : 1 000$/mois+ 
-Inclus : 
-• Architecture digitale complète 
-• Application custom si nécessaire 
-• Automatisations complexes 
-• Stratégie de croissance 12 mois 
-• Partenariat stratégique continu 
- 
-PLAN D'ACTION 30/60/90 JOURS 
-JOURS 1-30 : FONDATIONS 
-•    Refonte site Uprising Studio 
-•    Création Brand Book PDF (21 pages) 
-•    3 Case Studies détaillées 
-•    Lead Magnet "Blueprint" 
-•    10 posts LinkedIn préparés 
-•    Optimisation profil LinkedIn 
-JOURS 31-60 : TRACTION 
-•    Publication 4x/semaine LinkedIn 
-•    Prospection Dream 50 
-•    5+ audits stratégiques réalisés 
-•    2 clients signés minimum 
-•    Témoignages collectés 
-JOURS 61-90 : SCALING 
-•    5 000+ impressions/semaine LinkedIn 
-•    10+ rendez-vous qualifiés 
-•    15k-25k$ CA généré 
-•    Première Masterclass VIP planifiée
-
-•    Système de contenu automatisé 
- 
-CONCLUSION 
-UPRISING STUDIO — LA RÉVOLUTION COMMENCE MAINTENANT. 
-Vous avez maintenant :    Une identité de marque complète    Un positionnement 
-unique et puissant    Une méthodologie claire et différenciante    Un système de 
-contenu pour attirer des clients premium    Un plan d'action concret pour les 90 
-prochains jours 
-PROCHAINES ÉTAPES IMMÉDIATES : 
-1. Valider votre engagement 8/10 sur 365 jours 
-2. Créer votre site Uprising Studio (utilisez ce document comme guide) 
-3. Produire votre Brand Book PDF (structure fournie) 
-4. Commencer à publier sur LinkedIn (exemples de posts inclus) 
-5. Réserver vos premiers audits stratégiques 
-LA RÉVOLUTION DIGITALE NE VOUS ATTENDRA PAS. 
-Vous avez les outils. Vous avez la stratégie. Vous avez la vision. 
-MAINTENANT, EXÉCUTEZ.    
- 
-Document créé pour Uprising Studio — La Révolution Digitale Nouvelle Génération 
-Tous droits réservés © 2025
+• Usage: 50

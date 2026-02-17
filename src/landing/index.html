@@ -125,6 +125,43 @@
             font-size: 0.875rem;
             font-weight: 600;
         }
+
+        .quote-section {
+            margin-top: 5rem;
+            text-align: left;
+            background: #f1f5f9;
+            padding: 2rem;
+            border-radius: 1rem;
+        }
+
+        .quote-title {
+            margin-bottom: 1.5rem;
+            text-align: center;
+        }
+
+        .quote-form {
+            display: grid;
+            gap: 1rem;
+            max-width: 500px;
+            margin: 0 auto;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 0.25rem;
+            font-weight: 600;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 0.75rem;
+            border-radius: 0.5rem;
+            border: 1px solid #e2e8f0;
+        }
+
+        .submit-btn {
+            margin-top: 1rem;
+        }
     </style>
 </head>
 
@@ -146,23 +183,18 @@
             <span>Support 24/7</span>
         </div>
 
-        <section id="devis"
-            style="margin-top: 5rem; text-align: left; background: #f1f5f9; padding: 2rem; border-radius: 1rem;">
-            <h2 style="margin-bottom: 1.5rem; text-align: center;">Obtenir un devis personnalisé</h2>
-            <form action="thanks.html" method="GET" style="display: grid; gap: 1rem; max-width: 500px; margin: 0 auto;">
-                <div>
-                    <label for="clinic-name" style="display: block; margin-bottom: 0.25rem; font-weight: 600;">Nom de la
-                        clinique</label>
-                    <input type="text" id="clinic-name" name="clinic" placeholder="Ma Clinique Dentaire" required
-                        style="width: 100%; padding: 0.75rem; border-radius: 0.5rem; border: 1px solid #e2e8f0;">
+        <section id="devis" class="quote-section">
+            <h2 class="quote-title">Obtenir un devis personnalisé</h2>
+            <form action="thanks.html" method="POST" class="quote-form">
+                <div class="form-group">
+                    <label for="clinic-name">Nom de la clinique</label>
+                    <input type="text" id="clinic-name" name="clinic" placeholder="Ma Clinique Dentaire" required>
                 </div>
-                <div>
-                    <label for="email" style="display: block; margin-bottom: 0.25rem; font-weight: 600;">Email
-                        professionnel</label>
-                    <input type="email" id="email" name="email" placeholder="contact@clinique.com" required
-                        style="width: 100%; padding: 0.75rem; border-radius: 0.5rem; border: 1px solid #e2e8f0;">
+                <div class="form-group">
+                    <label for="email">Email professionnel</label>
+                    <input type="email" id="email" name="email" placeholder="contact@clinique.com" required>
                 </div>
-                <button type="submit" class="btn btn-primary" style="margin-top: 1rem;">Recevoir mon devis</button>
+                <button type="submit" class="btn btn-primary submit-btn">Recevoir mon devis</button>
             </form>
         </section>
     </div>

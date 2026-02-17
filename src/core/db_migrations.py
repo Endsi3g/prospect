@@ -930,12 +930,32 @@ def ensure_sqlite_schema_compatibility(engine) -> None:
         connection.execute(
             text("CREATE INDEX IF NOT EXISTS ix_campaign_enrollments_next_run_at ON campaign_enrollments (next_run_at)")
         )
+        
+        # Cleanup duplicates before enforcing uniqueness
         connection.execute(
             text(
-                "CREATE UNIQUE INDEX IF NOT EXISTS uq_campaign_enrollments_campaign_id_lead_id "
-                "ON campaign_enrollments (campaign_id, lead_id)"
+                """
+                DELETE FROM campaign_enrollments 
+                WHERE id NOT IN (
+                    SELECT MIN(id) 
+                    FROM campaign_enrollments 
+                    GROUP BY campaign_id, lead_id
+                )
+                """
             )
         )
+
+        try:
+            connection.execute(
+                text(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS uq_campaign_enrollments_campaign_id_lead_id "
+                    "ON campaign_enrollments (campaign_id, lead_id)"
+                )
+            )
+        except Exception as exc:
+            # Fallback for systems where index creation might fail despite cleanup
+            print(f"Warning: Could not create unique index on campaign_enrollments: {exc}")
+
         connection.execute(
             text("CREATE INDEX IF NOT EXISTS ix_campaign_runs_campaign_id ON campaign_runs (campaign_id)")
         )

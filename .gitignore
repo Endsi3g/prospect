@@ -17,7 +17,7 @@ pytest-cache-files-*/
 
 # Generic local artifacts
 .DS_Store
-*.bak
+*.bak*
 *.log
 verify.log
 
@@ -35,3 +35,6 @@ system-playground/.next/
 # Local workspace copies
 prospecting_system/
 manual_test_runs_local/
+
+.gemini/
+gha-creds-*.json

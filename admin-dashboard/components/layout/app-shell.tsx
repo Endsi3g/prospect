@@ -7,11 +7,6 @@ import { SiteHeader } from "@/components/site-header"
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
 import { cn } from "@/lib/utils"
 
-const DEFAULT_SIDEBAR_STYLE = {
-  "--sidebar-width": "calc(var(--spacing) * 72)",
-  "--header-height": "calc(var(--spacing) * 12)",
-} as React.CSSProperties
-
 type AppShellProps = {
   children: React.ReactNode
   contentClassName?: string
@@ -29,12 +24,7 @@ export function AppShell({
 }: AppShellProps) {
   return (
     <SidebarProvider
-      style={
-        {
-          ...DEFAULT_SIDEBAR_STYLE,
-          ...(providerStyle || {}),
-        } as React.CSSProperties
-      }
+      style={providerStyle}
     >
       <AppSidebar variant="inset" />
       <SidebarInset className={insetClassName}>

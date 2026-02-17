@@ -1,10 +1,10 @@
-# UPRISING STUDIO - Guide Légalisation Québec   Outils Gratuits.pdf
+# UPRISING STUDIO - Guide Légalisation Québec + Outils Gratuits.pdf
 
 - `doc_id`: `uprising-studio-guide-legalisation-quebec-outils-gratuits-4d66888f3e43`
 - `source_path`: `./CompagnieDocs/UPRISING STUDIO - Guide Légalisation Québec + Outils Gratuits.pdf`
 - `sha256`: `4d66888f3e434346b3bfc4ffdf36ae9e37b24f622af5212e90077e7c9c3b6b12`
 - `page_count`: `18`
-- `generated_at`: `2026-02-16T05:35:44.570913+00:00`
+- `generated_at`: `2026-02-17T03:43:55.394648+00:00`
 
 ## Page 1
 
@@ -199,7 +199,7 @@ Alternative payante abordable :
 
 ## Page 8
 
-QuickBooks Self-Employed : ~12 $/mois
+QuickBooks Self-Employed : ~12 )
 🎨  DESIGN & CRÉATION VISUELLE
 6. FIGMA (GRATUIT) ⭐  ESSENTIEL
 URL : https://figma.com
@@ -225,7 +225,7 @@ URL : https://photopea.com
 Clone de Photoshop en ligne, gratuit
 Retouche photos, manipulation images
 9. UNSPLASH / PEXELS (GRATUIT)
-(recommandé si revenus > 30k$/mois)
+/mois(recommand sirevenus>eˊ 30k
 
 ## Page 9
 
@@ -486,4 +486,3 @@ Domaine web : 15$/an
 Outils : 0-50$/mois
 Assurance (optionnel année 1) : 500-1000$/an
 BONNE CHANCE AVEC UPRISING STUDIO ! 🚀
-

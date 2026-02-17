@@ -47,11 +47,13 @@ DANGEROUS_ACTION_TYPES = frozenset({
 # ── Khoj communication ─────────────────────────────────────────
 
 def _khoj_base_url() -> str | None:
-    return os.getenv("KHOJ_API_BASE_URL") or None
+    from .secrets_manager import secrets_manager
+    return secrets_manager.resolve_secret(None, "KHOJ_API_BASE_URL") or None
 
 
 def _khoj_token() -> str:
-    return os.getenv("KHOJ_API_BEARER_TOKEN", "")
+    from .secrets_manager import secrets_manager
+    return secrets_manager.resolve_secret(None, "KHOJ_API_BEARER_TOKEN")
 
 
 def _ollama_fallback_enabled() -> bool:
@@ -278,10 +280,11 @@ def _dispatch_action(db: Session, action) -> dict[str, Any]:
 
 def _handle_source_leads(db: Session, payload: dict[str, Any]) -> dict[str, Any]:
     """Source leads via Apify (simplified – delegates to existing client if available)."""
+    from .secrets_manager import secrets_manager
     query = payload.get("query", "")
     max_results = payload.get("max_results", 10)
 
-    apify_token = os.getenv("APIFY_API_TOKEN")
+    apify_token = secrets_manager.resolve_secret(db, "APIFY_API_TOKEN")
     if not apify_token:
         logger.warning("APIFY_API_TOKEN not set – skipping lead sourcing")
         return {"skipped": True, "reason": "APIFY_API_TOKEN not configured"}
@@ -425,12 +428,13 @@ def _handle_research(db: Session, payload: dict[str, Any]) -> dict[str, Any]:
     provider = str(payload.get("provider", "perplexity") or "perplexity").strip().lower()
     raw_ollama_config = payload.get("ollama_config")
     ollama_config = raw_ollama_config if isinstance(raw_ollama_config, dict) else {}
+    from .secrets_manager import secrets_manager
     if not ollama_config:
         ollama_config = {
             "api_base_url": os.getenv("OLLAMA_API_BASE_URL", ""),
             "api_key_env": "OLLAMA_API_KEY",
             "model_research": os.getenv("OLLAMA_MODEL_RESEARCH", "llama3.1:8b-instruct"),
-            "timeout_seconds": os.getenv("OLLAMA_TIMEOUT_SECONDS", "25"),
+            "timeout_seconds": secrets_manager.resolve_secret(db, "OLLAMA_TIMEOUT_SECONDS", "60"),
         }
 
     if not query:

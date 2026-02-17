@@ -64,7 +64,7 @@ Tous droits réservés © 2026
 
 ## 👤 Auteur
 
-**Ensieg** - [GitHub][https://github.com/Endsi3g](cite:1)
+**Ensieg** - [GitHub](https://github.com/Endsi3g)(cite:1)
 
 ```text
 uvicorn src.admin.app:app --host 0.0.0.0 --port $PORT

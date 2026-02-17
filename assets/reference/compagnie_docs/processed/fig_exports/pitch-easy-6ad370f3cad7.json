@@ -2,10 +2,10 @@
   "doc_id": "pitch-easy-6ad370f3cad7",
   "original_name": "Pitch, Easy!.fig",
   "normalized_name": "pitch-easy",
-  "conversion_status": "failed",
-  "attempted_at": "2026-02-16T05:35:39.258254+00:00",
+  "conversion_status": "skipped",
+  "attempted_at": "2026-02-17T03:43:41.094379+00:00",
   "conversion_outputs": [],
-  "error": "missing_figma_credentials_or_file_key",
+  "error": null,
   "raw_path": "./assets/reference/compagnie_docs/raw/pitch-easy-6ad370f3cad7.fig",
   "sha256": "6ad370f3cad74697b8fe2fbbf296ab2335c32fd2838812932073d509e7aaf2e6"
 }

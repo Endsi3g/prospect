@@ -35,8 +35,8 @@ function getOptionalAuthHeader(): string | null {
 }
 
 function getUpstreamTimeoutMs(): number {
-  const raw = Number(process.env.PROXY_UPSTREAM_TIMEOUT_MS || "20000")
-  if (!Number.isFinite(raw)) return 20000
+  const raw = Number(process.env.PROXY_UPSTREAM_TIMEOUT_MS || "60000")
+  if (!Number.isFinite(raw)) return 60000
   return Math.max(1000, Math.min(raw, 120000))
 }
 
@@ -136,6 +136,72 @@ function getDevelopmentFallback(pathname: string, search: URLSearchParams, metho
       theme: "system",
       default_refresh_mode: "polling",
       notifications: { email: true, in_app: true },
+    }
+  }
+
+  if (pathname === "/api/v1/admin/help") {
+    return {
+      support_email: "support@example.com",
+      faqs: [{ question: "Comment lancer ?", answer: "Allez dans Leads." }],
+      links: [{ label: "Parametres", href: "/settings" }],
+      sections: [
+        {
+          id: "guides",
+          label: "Guides",
+          items: [{ label: "Quickstart", href: "/help/quickstart" }]
+        }
+      ],
+      quick_actions: [
+        { id: "docs", label: "Library", href: "/library", scope: "global" }
+      ],
+      updated_at: nowIso
+    }
+  }
+
+  if (pathname === "/api/v1/admin/secrets/schema") {
+    return {
+      version: "v1",
+      categories: [
+        {
+          id: "ai",
+          label: "IA / NLP",
+          keys: [
+            { key: "OPENAI_API_KEY", description: "Clé OpenAI" },
+            { key: "ANTHROPIC_API_KEY", description: "Clé Anthropic" }
+          ]
+        }
+      ]
+    }
+  }
+
+  if (pathname === "/api/v1/admin/secrets") {
+    return {
+      items: [
+        { key: "OPENAI_API_KEY", configured: true, source: "env", masked_value: "********", updated_at: nowIso },
+        { key: "ANTHROPIC_API_KEY", configured: false, source: "none", masked_value: "", updated_at: null }
+      ]
+    }
+  }
+
+  if (pathname === "/api/v1/admin/docs/compagnie") {
+    return {
+      generated_at: nowIso,
+      stats: { total_files: 1, processed_pdf: 1, ingested: 0, failed: 0 },
+      page: 1,
+      page_size: 24,
+      total: 1,
+      items: [
+        {
+          doc_id: "dev-doc-1",
+          title: "Document Dev.pdf",
+          ext: ".pdf",
+          status: "processed",
+          size_bytes: 1024,
+          updated_at: nowIso,
+          raw_path: "/raw/dev-doc-1.pdf",
+          processed: { markdown_path: "/processed/dev-doc-1.md" }
+        }
+      ]
     }
   }
 

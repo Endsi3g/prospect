@@ -2,10 +2,10 @@
   "doc_id": "professional-brand-guidelines-template-figma-b51d0a1359d3",
   "original_name": "Professional Brand Guidelines Template (Figma).fig",
   "normalized_name": "professional-brand-guidelines-template-figma",
-  "conversion_status": "failed",
-  "attempted_at": "2026-02-16T05:35:41.305327+00:00",
+  "conversion_status": "skipped",
+  "attempted_at": "2026-02-17T03:43:45.858505+00:00",
   "conversion_outputs": [],
-  "error": "missing_figma_credentials_or_file_key",
+  "error": null,
   "raw_path": "./assets/reference/compagnie_docs/raw/professional-brand-guidelines-template-figma-b51d0a1359d3.fig",
   "sha256": "b51d0a1359d3b557195c619e2813324b1979d7e7b63ba7b677ad625c09a615ae"
 }

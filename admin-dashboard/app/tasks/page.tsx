@@ -88,7 +88,7 @@ export default function TasksPage() {
   return (
     <AppShell>
       <div className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
-        <h2 className="text-3xl font-bold tracking-tight">Taches</h2>
+        <h2 className="text-3xl font-bold tracking-tight">Tâches</h2>
         <ExportCsvButton entity="tasks" />
       </div>
       <SyncStatus updatedAt={updatedAt} onRefresh={() => void mutate()} />
@@ -100,22 +100,22 @@ export default function TasksPage() {
         </div>
       ) : error || loadingTimedOut ? (
         <ErrorState
-          title="Impossible de charger les taches."
+          title="Impossible de charger les tâches."
           description={
             loadingTimedOut
-              ? "Le chargement depasse le delai attendu. Vérifiez la sante de l'API puis reessayez."
+              ? "Le chargement dépasse le délai attendu. Vérifiez la santé de l'API puis réessayez."
               : error instanceof Error
                 ? error.message
-                : "La liste des taches est temporairement indisponible."
+                : "La liste des tâches est temporairement indisponible."
           }
-          secondaryLabel="Ouvrir Parametres"
+          secondaryLabel="Ouvrir Paramètres"
           secondaryHref="/settings"
           onRetry={() => void mutate()}
         />
       ) : (data?.total || 0) === 0 ? (
         <EmptyState
-          title="Aucune tache disponible"
-          description="Les taches apparaissent ici apres creation ou conversion depuis les leads."
+          title="Aucune tâche disponible"
+          description="Les tâches apparaissent ici après création ou conversion depuis les leads."
         />
       ) : (
         <TasksTable

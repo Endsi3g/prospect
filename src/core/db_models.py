@@ -47,6 +47,7 @@ class DBLead(Base):
 
     status = Column(SqlEnum(LeadStatus), default=LeadStatus.NEW, index=True)
     segment = Column(String, nullable=True, index=True)
+    source = Column(String, nullable=True, index=True)
     stage = Column(SqlEnum(LeadStage), default=LeadStage.NEW, index=True)
     outcome = Column(SqlEnum(LeadOutcome), nullable=True, index=True)
     lead_owner_user_id = Column(String, ForeignKey("admin_users.id"), nullable=True, index=True)

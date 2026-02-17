@@ -1,3 +1,4 @@
+import * as React from "react"
 import Image from "next/image"
 import { GalleryVerticalEnd } from "lucide-react"
 
@@ -17,7 +18,9 @@ export default function CreateAccountPage() {
         </div>
         <div className="flex flex-1 items-center justify-center">
           <div className="w-full max-w-xs">
-            <CreateAccountForm />
+            <React.Suspense fallback={<div className="h-64 animate-pulse rounded-lg bg-muted" />}>
+              <CreateAccountForm />
+            </React.Suspense>
           </div>
         </div>
       </div>

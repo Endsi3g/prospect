@@ -50,7 +50,10 @@ import {
 } from "@/components/ui/tooltip"
 import { IconInfoCircle } from "@tabler/icons-react"
 import { ResponsiveDataView } from "@/components/responsive/responsive-data-view"
-import { requestApi } from "@/lib/api"
+import { requestApi, fetchApi } from "@/lib/api"
+import useSWR from "swr"
+
+const fetcher = <T,>(path: string) => fetchApi<T>(path)
 
 export type Lead = {
   id: string
@@ -505,9 +508,9 @@ export function LeadsTable({
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                 <span className="ml-2 text-sm font-medium">{selectedLeads.size} selectionne(s)</span>
                 <div className="flex items-center gap-2 ml-4">
-                  <Select value={enrollCampaignId} onValueChange={setEnrollCampaignId}>
+                  <Select value={enrollCampaignId} onValueChange={setEnrollCampaignId} disabled={activeCampaigns.length === 0}>
                     <SelectTrigger className="h-8 w-[200px]">
-                      <SelectValue placeholder="Choisir campagne" />
+                      <SelectValue placeholder={activeCampaigns.length === 0 ? "Aucune campagne active" : "Choisir campagne"} />
                     </SelectTrigger>
                     <SelectContent>
                       {activeCampaigns.map((c) => (
@@ -515,7 +518,7 @@ export function LeadsTable({
                       ))}
                     </SelectContent>
                   </Select>
-                  <Button size="sm" onClick={executeBulkEnroll} disabled={!enrollCampaignId || isEnrolling}>
+                  <Button size="sm" onClick={executeBulkEnroll} disabled={!enrollCampaignId || isEnrolling || activeCampaigns.length === 0}>
                     {isEnrolling ? "Ajout..." : "Lancer automation"}
                   </Button>
                 </div>

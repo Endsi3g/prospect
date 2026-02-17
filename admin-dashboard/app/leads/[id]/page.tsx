@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { SendEmailModal } from "@/components/send-email-modal"
 import { requestApi } from "@/lib/api"
 import { formatCurrencyFr, formatDateTimeFr } from "@/lib/format"
 
@@ -146,6 +147,7 @@ export default function LeadDetailPage() {
   const timerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
   const [saveState, setSaveState] = React.useState("idle")
   const [isDraftValid, setIsDraftValid] = React.useState(true)
+  const [validationError, setValidationError] = React.useState<string | null>(null)
 
   const [quickTaskTitle, setQuickTaskTitle] = React.useState("")
   const [oppName, setOppName] = React.useState("")
@@ -159,6 +161,7 @@ export default function LeadDetailPage() {
   const [ownerUserId, setOwnerUserId] = React.useState("")
   const [handoffNote, setHandoffNote] = React.useState("")
   const [workflowBusy, setWorkflowBusy] = React.useState(false)
+  const [emailModalOpen, setEmailModalOpen] = React.useState(false)
   const [recommendationBusyId, setRecommendationBusyId] = React.useState<string | null>(null)
 
   const [notes, setNotes] = React.useState<Note[]>([])
@@ -201,16 +204,39 @@ export default function LeadDetailPage() {
 
   const saveLead = React.useCallback(async () => {
     if (!draft || !id || dirtyRef.current.size === 0) return
-    if (!draft.first_name.trim() || !draft.last_name.trim() || !draft.company_name.trim()) {
+    
+    if (!draft.first_name.trim()) {
+      setValidationError("Prenom requis")
+      setIsDraftValid(false)
+      setSaveState("error")
+      return
+    }
+    if (!draft.last_name.trim()) {
+      setValidationError("Nom requis")
+      setIsDraftValid(false)
+      setSaveState("error")
+      return
+    }
+    if (!draft.company_name.trim()) {
+      setValidationError("Nom d'entreprise requis")
+      setIsDraftValid(false)
+      setSaveState("error")
+      return
+    }
+    if (!draft.email.trim()) {
+      setValidationError("Email requis")
       setIsDraftValid(false)
       setSaveState("error")
       return
     }
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(draft.email.trim())) {
+      setValidationError("Format d'email invalide")
       setIsDraftValid(false)
       setSaveState("error")
       return
     }
+
+    setValidationError(null)
     setIsDraftValid(true)
     const payload: Record<string, unknown> = {}
     for (const field of dirtyRef.current.values()) {
@@ -415,23 +441,49 @@ export default function LeadDetailPage() {
                     <IconPhone className="mr-1.5 h-3.5 w-3.5 text-blue-600" />
                     Appeler
                   </Button>
+                  <Button variant="outline" className="w-full justify-start h-9 px-2 text-xs" onClick={() => setEmailModalOpen(true)}>
+                    <IconMail className="mr-1.5 h-3.5 w-3.5 text-orange-600" />
+                    Email (Interne)
+                  </Button>
                   <Button variant="outline" className="w-full justify-start h-9 px-2 text-xs" onClick={() => (window.location.href = `mailto:${lead.email}`)}>
                     <IconMail className="mr-1.5 h-3.5 w-3.5 text-orange-600" />
-                    Email
+                    Email (Client)
                   </Button>
-                  <Button variant="outline" className="w-full justify-start h-9 px-2 text-xs" onClick={() => lead.linkedin_url && window.open(lead.linkedin_url, "_blank")} disabled={!lead.linkedin_url}>
+                  <Button variant="outline" className="w-full justify-start h-9 px-2 text-xs" onClick={() => {
+                    if (!lead.linkedin_url) return;
+                    try {
+                      const url = new URL(lead.linkedin_url);
+                      if (["http:", "https:"].includes(url.protocol) && (url.hostname.endsWith("linkedin.com") || url.hostname === "lnkd.in")) {
+                        window.open(lead.linkedin_url, "_blank");
+                      } else {
+                        toast.error("URL LinkedIn non sécurisée ou invalide.");
+                      }
+                    } catch {
+                      toast.error("URL LinkedIn malformée.");
+                    }
+                  }} disabled={!lead.linkedin_url}>
                     <IconBrandLinkedin className="mr-1.5 h-3.5 w-3.5 text-cyan-600" />
                     LinkedIn
                   </Button>
                 </div>
                 <div className="my-2 border-t border-muted" />
                 <Button className="w-full justify-start" onClick={() => void createTask()} disabled={busy}><IconChecklist className="h-4 w-4" />Creer tache</Button><Button className="w-full justify-start" onClick={() => void createOpportunity(`Conversion - ${lead.first_name} ${lead.last_name}`)} disabled={busy}><IconTargetArrow className="h-4 w-4" />Convertir en opportunite</Button><select title="Selected campaign" className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm" value={campaignId} onChange={(e) => setCampaignId(e.target.value)}><option value="">Choisir campagne</option>{(campaigns?.items || []).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><Button className="w-full justify-start" onClick={() => void addToCampaign()} disabled={busy}><IconRocket className="h-4 w-4" />Ajouter a campagne</Button></CardContent></Card>
-              <Card><CardHeader><CardTitle>Sauvegarde</CardTitle></CardHeader><CardContent><p className="text-sm">Infos: <span className="font-medium">{saveState === "saving" ? "Sauvegarde..." : saveState === "saved" ? "Enregistre" : saveState === "error" ? "Erreur" : "En attente"}</span></p><p className="text-sm">Notes: <span className="font-medium">{notesDirty ? "Sauvegarde..." : "Enregistre"}</span></p></CardContent></Card>
+              <Card><CardHeader><CardTitle>Sauvegarde</CardTitle></CardHeader><CardContent>
+                <p className="text-sm">Infos: <span className="font-medium">{saveState === "saving" ? "Sauvegarde..." : saveState === "saved" ? "Enregistre" : saveState === "error" ? (validationError || "Erreur") : "En attente"}</span></p>
+                <p className="text-sm">Notes: <span className="font-medium">{notesDirty ? "Sauvegarde..." : "Enregistre"}</span></p>
+              </CardContent></Card>
               <Card><CardHeader><CardTitle>Historique des changements</CardTitle><CardDescription>Trace sur 30 jours</CardDescription></CardHeader><CardContent className="space-y-2">{historyLoading ? <Skeleton className="h-24 w-full" /> : null}{changeHistory.length === 0 ? <p className="text-sm text-muted-foreground">Aucun changement trace.</p> : null}{changeHistory.map((item) => <div key={item.id} className="rounded-lg border p-2"><p className="text-sm font-medium">{item.title}</p><p className="text-xs text-muted-foreground">{formatDateTimeFr(item.timestamp)}</p>{item.description ? <p className="mt-1 text-xs text-muted-foreground">{item.description}</p> : null}</div>)}</CardContent></Card>
             </div>
           </div>
         </div>
       </SidebarInset>
+      <SendEmailModal 
+        open={emailModalOpen} 
+        onOpenChange={setEmailModalOpen}
+        leadId={id}
+        leadName={`${lead.first_name} ${lead.last_name}`}
+        leadEmail={lead.email}
+      />
     </SidebarProvider>
   )
 }

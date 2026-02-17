@@ -487,7 +487,7 @@ export default function SystemsPage() {
                           {item.action} <span className="text-muted-foreground">par {item.actor}</span>
                         </p>
                         <p className="text-xs text-muted-foreground">
-                          {item.entity_type || "system"} {item.entity_id ? `#${item.entity_id}` : ""} • {item.created_at ? formatDateTimeFr(item.created_at) : "Unknown"}
+                          {item.entity_type || "system"} {item.entity_id ? `#${item.entity_id}` : ""} • {item.created_at ? formatDateTimeFr(item.created_at) : "Inconnu"}
                         </p>
                       </div>
                     ))}

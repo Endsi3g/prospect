@@ -4,7 +4,7 @@
 - `source_path`: `./CompagnieDocs/UPRISING STUDIO - Prompt Complet Branding Style Apple x Novara.pdf`
 - `sha256`: `fc7dc0398fd5235e1e1874f338fa5dd29c0b14f9f850cc2aa28cbb7b4dcab151`
 - `page_count`: `35`
-- `generated_at`: `2026-02-16T05:35:52.766696+00:00`
+- `generated_at`: `2026-02-17T03:44:23.992250+00:00`
 - `warnings`:
   - `page_1_contains_i255_artifacts`
   - `page_2_contains_i255_artifacts`

@@ -4,7 +4,7 @@
 - `source_path`: `./CompagnieDocs/PLAYBOOK STRATÉGIQUE _ UPRISING STUDIO.pdf`
 - `sha256`: `7f2faa3d0ae276b4f51f708da579673d4ccc0ccec7cfe18eb1a99ccd95880e6e`
 - `page_count`: `8`
-- `generated_at`: `2026-02-16T05:35:41.122766+00:00`
+- `generated_at`: `2026-02-17T03:43:45.396404+00:00`
 
 ## Page 1
 

@@ -87,9 +87,11 @@ def _is_hidden_source_entry(path: Path, source_root: Path) -> bool:
     return any(part.startswith(".") for part in relative_parts)
 
 
-def _normalize_original_name(file_name: str) -> str:
+def _normalize_original_name(file_name: str, replace_embedded_apostrophes: bool = False) -> str:
     decoded = unquote_plus(file_name)
-    return re.sub(r"(?<=\w)_(?=\w)", "'", decoded)
+    if replace_embedded_apostrophes:
+        return re.sub(r"(?<=\w)_(?=\w)", "'", decoded)
+    return decoded
 
 
 def _resolve_pdf_reader_class():
@@ -115,21 +117,6 @@ def _low_alphanumeric_ratio(text: str) -> bool:
         return False
     alnum = sum(1 for char in printable if char.isalnum())
     return (alnum / len(printable)) < 0.35
-
-
-def _has_suspicious_truncated_tail(text: str) -> bool:
-    if not text:
-        return False
-    stripped = text.strip()
-    if not stripped:
-        return False
-    last_line = stripped.splitlines()[-1].strip()
-    if not last_line:
-        return False
-    # Typical extraction truncation marker observed in corpus (e.g. "Usage: 50").
-    if re.search(r"\bUsage:\s*\d{1,3}\s*$", last_line):
-        return True
-    return False
 
 
 def _request_json_with_retries(
@@ -184,24 +171,41 @@ def _recover_with_tounicode(reader: Any) -> str | None:
 
 def _attempt_ocr_fallback(pdf_path: Path) -> str | None:
     try:
-        from pdf2image import convert_from_path
+        from pdf2image import convert_from_path, pdfinfo_from_path
         import pytesseract
     except Exception:
         return None
 
     try:
-        images = convert_from_path(str(pdf_path), dpi=300)
+        info = pdfinfo_from_path(str(pdf_path))
+        page_count = info.get("Pages", 0)
+        if page_count <= 0:
+            return None
     except Exception:
         return None
 
     chunks: list[str] = []
-    for image in images:
+    batch_size = 10
+    for first_page in range(1, page_count + 1, batch_size):
+        last_page = min(first_page + batch_size - 1, page_count)
         try:
-            text = pytesseract.image_to_string(image, lang="fra+eng")
-        except Exception:
-            text = ""
-        if text.strip():
-            chunks.append(text)
+            images = convert_from_path(
+                str(pdf_path),
+                dpi=300,
+                first_page=first_page,
+                last_page=last_page
+            )
+            for image in images:
+                try:
+                    text = pytesseract.image_to_string(image, lang="fra+eng")
+                    if text.strip():
+                        chunks.append(text)
+                finally:
+                    image.close()
+        except Exception as exc:
+            logger.warning("OCR batch %d-%d failed: %s", first_page, last_page, exc)
+            continue
+
     merged = "\n".join(chunks).strip()
     return merged or None
 
@@ -247,35 +251,33 @@ def _extract_pdf_content(pdf_path: Path) -> dict[str, Any]:
         full_text_parts.append(text)
 
     full_text = "\n".join(full_text_parts).strip()
-    if _looks_like_glyph_tokens(full_text):
+    has_artifacts = _looks_like_glyph_tokens(full_text)
+    if has_artifacts:
         warnings.append("contains_i255_artifacts")
     if _low_alphanumeric_ratio(full_text):
         warnings.append("low_alphanumeric_ratio")
 
-    if _looks_like_glyph_tokens(full_text) or _low_alphanumeric_ratio(full_text):
+    if has_artifacts or _low_alphanumeric_ratio(full_text):
         tounicode_text = _recover_with_tounicode(reader)
         if tounicode_text and not _looks_like_glyph_tokens(tounicode_text):
             full_text = tounicode_text
             warnings.append("recovered_with_tounicode")
+            pages = [{"page": None, "text": full_text, "char_count": len(full_text), "recovered": True, "recovery_method": "tounicode"}]
+            has_artifacts = False
         else:
             ocr_text = _attempt_ocr_fallback(pdf_path)
             if ocr_text:
                 full_text = ocr_text
                 warnings.append("recovered_with_ocr")
+                pages = [{"page": None, "text": full_text, "char_count": len(full_text), "recovered": True, "recovery_method": "ocr"}]
+                has_artifacts = _looks_like_glyph_tokens(full_text)
 
-    if len(pages) != len(reader.pages):
-        warnings.append("page_count_mismatch")
-
-    is_valid = True
-    validation_error = None
-    if _has_suspicious_truncated_tail(full_text):
-        warnings.append("possible_truncated_trailing_content")
-        is_valid = False
-        validation_error = "validation_failed:possible_truncated_trailing_content"
+    is_valid = not has_artifacts
+    error = "systemic_extraction_failure:persistent_i255_artifacts" if has_artifacts else None
 
     return {
         "ok": is_valid,
-        "error": validation_error,
+        "error": error,
         "page_count": len(reader.pages),
         "pages": pages,
         "full_text": full_text,
@@ -367,8 +369,7 @@ def _attempt_figma_export(
     }
 
     if not enable_export:
-        manifest["conversion_status"] = "failed"
-        manifest["error"] = "figma_export_disabled"
+        manifest["conversion_status"] = "skipped"
         return manifest
 
     api_token = os.getenv("FIGMA_ACCESS_TOKEN", "").strip()
@@ -513,7 +514,8 @@ def ingest_compagnie_docs(
         ext = file_path.suffix.lower()
         stats["total_files"] += 1
         normalized_name = _slugify(file_path.stem)
-        original_name = _normalize_original_name(file_path.name)
+        # By default, do not replace underscores with apostrophes to avoid breaking paths
+        original_name = _normalize_original_name(file_path.name, replace_embedded_apostrophes=False)
         sha256 = _sha256_file(file_path)
         source_path = _path_to_repo_relative_posix(file_path, repo_root)
 
@@ -623,13 +625,15 @@ def ingest_compagnie_docs(
             if manifest["conversion_status"] == "converted":
                 document["status"] = "processed"
                 stats["fig_converted"] += 1
+                stats["processed_fig"] += 1
             elif manifest["conversion_status"] == "failed":
                 document["status"] = "failed"
                 stats["failed"] += 1
+            elif manifest["conversion_status"] == "skipped":
+                document["status"] = "ingested"
             else:
                 document["status"] = "pending_conversion"
                 stats["pending_fig_conversion"] += 1
-            stats["processed_fig"] += 1
         elif ext in SUPPORTED_EXTENSIONS and mode != "full":
             document["status"] = "ingested"
         else:

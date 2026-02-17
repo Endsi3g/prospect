@@ -14,7 +14,7 @@ from ..core.logging import get_logger
 logger = get_logger(__name__)
 
 DEFAULT_OLLAMA_MODEL = "llama3.1:8b-instruct"
-DEFAULT_OLLAMA_TIMEOUT_SECONDS = 25.0
+DEFAULT_OLLAMA_TIMEOUT_SECONDS = 60.0
 
 
 def _clean_base_url(raw: str | None) -> str:
@@ -30,13 +30,14 @@ def _resolve_base_url(config: dict[str, Any] | None = None) -> str:
 
 
 def _resolve_api_key(config: dict[str, Any] | None = None) -> str:
+    from .secrets_manager import secrets_manager
     if isinstance(config, dict):
         direct = str(config.get("api_key") or "").strip()
         if direct:
             return direct
         env_name = str(config.get("api_key_env") or "OLLAMA_API_KEY").strip() or "OLLAMA_API_KEY"
-        return str(os.getenv(env_name) or "").strip()
-    return str(os.getenv("OLLAMA_API_KEY") or "").strip()
+        return secrets_manager.resolve_secret(None, env_name)
+    return secrets_manager.resolve_secret(None, "OLLAMA_API_KEY")
 
 
 def _resolve_timeout_seconds(config: dict[str, Any] | None = None) -> float:

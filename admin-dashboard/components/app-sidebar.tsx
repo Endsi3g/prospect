@@ -120,11 +120,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             icon: IconSearch,
           },
           {
-            title: messages.sidebar.systems,
-            url: "/systems",
-            icon: IconSettings,
-          },
-          {
             title: messages.sidebar.assistantAi,
             url: "/assistant",
             icon: IconSparkles,
@@ -175,6 +170,11 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         title: messages.sidebar.dev,
         url: "/settings/dev",
         icon: IconSettings,
+      },
+      {
+        title: messages.sidebar.systems,
+        url: "/systems",
+        icon: IconDatabase,
       },
       {
         title: messages.sidebar.getHelp,

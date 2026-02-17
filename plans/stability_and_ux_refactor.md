@@ -12,22 +12,24 @@ Add indexes to frequently queried/sorted columns in `src/core/db_models.py`:
 - **DBProject**: `created_at`, `due_date`, `status`.
 
 ### 1.2 Refactor `compute_core_funnel_stats` in `src/admin/stats_service.py`
-- Optimize the `tier_distribution` calculation: Instead of fetching all tags for all leads, use a SQL query to count occurrences of tags starting with "Tier " if possible, or at least optimize the fetch.
+- Optimize the `tier_distribution` calculation: Instead of fetching all tags for all leads and processing in Python, use a SQL `GROUP BY` query if tags are in a separate table (e.g., `SELECT tag, COUNT(*) FROM lead_tags WHERE tag LIKE 'Tier %' GROUP BY tag`). If tags are stored as JSON, implement a computed column or use DB-specific JSON indexing.
 - Ensure all count queries in `compute_core_funnel_stats` and `_build_daily_trend` are efficient and utilize the new indexes.
+- **Baseline:** Measure current response time for `/api/v1/admin/stats` (target < 200ms).
 
 ### 1.3 Optimize `list_leads` and `_get_tasks_payload`
 - Ensure sorting columns are indexed.
-- Review the `total = query.count()` call to ensure it's not the bottleneck.
+- Review the `total = query.count()` call. Use an optimized count strategy such as estimated counts (`EXPLAIN`) or a separate lightweight count query to avoid expensive full scans on large datasets.
 
 ## 2. UX Simplification (Product Improvements)
 
 ### 2.1 Simplify Campaign Enrollment (Addressing the "JSON" complaint)
-- Refactor the campaign enrollment filter logic to be more user-friendly.
-- While the full UI refactor belongs in the frontend, the backend can support it by providing better defaults and validation.
+- Refactor the campaign enrollment filter UI: replace manual JSON editing with a simple form that generates the filter JSON. Include an "Advanced Mode" for raw JSON.
+- Specify defaults to pre-populate filters (e.g., `status=active`, `created_at` within last 30 days).
+- Implement JSON schema validation on the backend to provide friendly error messages (e.g., "Le champ 'min_score' doit être un nombre").
 
 ### 2.2 Improve Error Handling and Loading Feedback
-- Implement the "fallback propre" (clean fallback) mentioned in the continuation plan.
-- Ensure all endpoints return consistent error structures (standardized in `src/admin/app.py`).
+- Implement a "fallback propre": return a sanitized, UI-friendly message and a retry option instead of raw stack traces.
+- Standardize the error structure across all endpoints: `{ "error": "Code", "message": "Friendly Message", "details": { ... } }` as referenced in `src/admin/app.py`.
 
 ## 3. Verification Plan
 

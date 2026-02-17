@@ -86,12 +86,13 @@ def _resolve_provider_list(
 
 
 def _extract_api_key(config: dict[str, Any], default_env_name: str) -> str:
+    from .secrets_manager import secrets_manager
     direct_key = str(config.get("api_key") or "").strip()
-    if direct_key:
+    if direct_key and direct_key != "********":
         return direct_key
 
     env_name = str(config.get("api_key_env") or default_env_name).strip() or default_env_name
-    return str(os.getenv(env_name) or "").strip()
+    return secrets_manager.resolve_secret(None, env_name)
 
 
 def _normalize_item(
