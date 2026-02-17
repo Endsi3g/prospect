@@ -4,7 +4,6 @@ This repository is organized to keep runtime code separate from operational scri
 
 ## Top-level runtime files
 
-- `run_system.py`: Main CLI entrypoint for sourcing, enrichment, scoring, and outreach flow.
 - `requirements.txt`: Python dependencies.
 - `.env.example`: Environment variable template.
 - `README.md`: Product overview and quickstart.
@@ -22,6 +21,7 @@ This repository is organized to keep runtime code separate from operational scri
 
 ## Documentation
 
+- `docs/NEXT_STEPS.md`: Immediate and short-term roadmap.
 - `docs/README.md`
 - `docs/api/admin_v1.md`
 - `docs/operations/OPERATIONS_MANUAL.md`
@@ -34,12 +34,18 @@ This repository is organized to keep runtime code separate from operational scri
 
 ## Scripts
 
+- `scripts/run_system.py`: Main CLI entrypoint for sourcing, enrichment, scoring, and outreach flow.
 - `scripts/ops/check_connections.py`
 - `scripts/ops/check_pipeline.py`
 - `scripts/ops/setup_schedule.ps1`
+- `scripts/ops/deploy.ps1`: Deployment automation.
+- `scripts/ops/git_sync.ps1`: Git synchronization utility.
+- `scripts/ops/dev_cycle.ps1`: Development cycle helper.
+- `scripts/qa/test_frontends.ps1`: Frontend QA automation.
 - `scripts/verification/verify_funnel.py`
 - `scripts/verification/verify_advanced_system.py`
 - `scripts/verification/test_followup_logic.py`
+- `scripts/utilities/detect_region.py`: Geographic region detection.
 - `scripts/utilities/extract_manual.py`
 - `scripts/utilities/generate_proposal.py`
 
