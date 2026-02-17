@@ -14,7 +14,7 @@
 #>
 
 $ErrorActionPreference = "Stop"
-$RootDir = $PSScriptRoot
+$RootDir = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 
 function Start-Window {
     param([string]$Title, [string]$Command, [string]$WorkingDirectory)
