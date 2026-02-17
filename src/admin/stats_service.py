@@ -147,10 +147,12 @@ def compute_core_funnel_stats(db: Session, qualification_threshold: float) -> Di
     )
     avg_total_score = db.query(func.avg(DBLead.total_score)).scalar() or 0.0
 
-    tier_distribution = {}
-    for (tags,) in db.query(DBLead.tags).all():
-        tier = _extract_tier(tags)
-        tier_distribution[tier] = tier_distribution.get(tier, 0) + 1
+    tier_rows = (
+        db.query(DBLead.tier, func.count(DBLead.id))
+        .group_by(DBLead.tier)
+        .all()
+    )
+    tier_distribution = {tier or "Tier Unknown": count for tier, count in tier_rows}
 
     return {
         "sourced_total": sourced_total,

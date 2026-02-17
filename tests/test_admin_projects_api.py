@@ -21,7 +21,10 @@ def test_projects_crud_flow(client):
 
     list_response = client.get("/api/v1/admin/projects", auth=("admin", "secret"))
     assert list_response.status_code == 200
-    project_ids = [item["id"] for item in list_response.json()]
+    data = list_response.json()
+    assert "items" in data
+    assert "total" in data
+    project_ids = [item["id"] for item in data["items"]]
     assert created["id"] in project_ids
 
     update_response = client.patch(

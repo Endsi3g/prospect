@@ -42,13 +42,13 @@ class DBLead(Base):
     phone = Column(String, nullable=True)
     linkedin_url = Column(String, nullable=True)
     
-    company_id = Column(Integer, ForeignKey("companies.id"))
+    company_id = Column(Integer, ForeignKey("companies.id"), index=True)
     company = relationship("DBCompany", back_populates="leads")
 
-    status = Column(SqlEnum(LeadStatus), default=LeadStatus.NEW)
-    segment = Column(String, nullable=True)
-    stage = Column(SqlEnum(LeadStage), default=LeadStage.NEW)
-    outcome = Column(SqlEnum(LeadOutcome), nullable=True)
+    status = Column(SqlEnum(LeadStatus), default=LeadStatus.NEW, index=True)
+    segment = Column(String, nullable=True, index=True)
+    stage = Column(SqlEnum(LeadStage), default=LeadStage.NEW, index=True)
+    outcome = Column(SqlEnum(LeadOutcome), nullable=True, index=True)
     lead_owner_user_id = Column(String, ForeignKey("admin_users.id"), nullable=True, index=True)
     stage_canonical = Column(String, nullable=False, default="new", index=True)
     stage_entered_at = Column(DateTime, nullable=True, index=True)
@@ -66,20 +66,20 @@ class DBLead(Base):
     score_breakdown = Column(JSON, default=dict)
 
     # Current scoring model
-    icp_score = Column(Float, default=0.0)
-    heat_score = Column(Float, default=0.0)
-    total_score = Column(Float, default=0.0)
-    tier = Column(String, default="Tier D")
-    heat_status = Column(String, default="Cold")
+    icp_score = Column(Float, default=0.0, index=True)
+    heat_score = Column(Float, default=0.0, index=True)
+    total_score = Column(Float, default=0.0, index=True)
+    tier = Column(String, default="Tier D", index=True)
+    heat_status = Column(String, default="Cold", index=True)
     next_best_action = Column(String, nullable=True)
     icp_breakdown = Column(JSON, default=dict)
     heat_breakdown = Column(JSON, default=dict)
-    last_scored_at = Column(DateTime, nullable=True)
+    last_scored_at = Column(DateTime, nullable=True, index=True)
 
     tags = Column(JSON, default=list)
     details = Column(JSON, default=dict)
-    created_at = Column(DateTime, default=datetime.now)
-    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+    created_at = Column(DateTime, default=datetime.now, index=True)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, index=True)
 
     interactions = relationship("DBInteraction", back_populates="lead")
 
@@ -87,9 +87,9 @@ class DBInteraction(Base):
     __tablename__ = "interactions"
 
     id = Column(Integer, primary_key=True, index=True)
-    lead_id = Column(String, ForeignKey("leads.id"))
-    type = Column(SqlEnum(InteractionType))
-    timestamp = Column(DateTime, default=datetime.now)
+    lead_id = Column(String, ForeignKey("leads.id"), index=True)
+    type = Column(SqlEnum(InteractionType), index=True)
+    timestamp = Column(DateTime, default=datetime.now, index=True)
     details = Column(JSON, default=dict)
 
     lead = relationship("DBLead", back_populates="interactions")
@@ -100,11 +100,11 @@ class DBTask(Base):
     id = Column(String, primary_key=True, index=True)
     title = Column(String)
     description = Column(String, nullable=True)
-    status = Column(String, default="To Do")
-    priority = Column(String, default="Medium")
-    due_date = Column(DateTime, nullable=True)
-    assigned_to = Column(String, default="You")
-    lead_id = Column(String, ForeignKey("leads.id"), nullable=True)
+    status = Column(String, default="To Do", index=True)
+    priority = Column(String, default="Medium", index=True)
+    due_date = Column(DateTime, nullable=True, index=True)
+    assigned_to = Column(String, default="You", index=True)
+    lead_id = Column(String, ForeignKey("leads.id"), nullable=True, index=True)
     project_id = Column(String, ForeignKey("projects.id"), nullable=True, index=True)
     project_name = Column(String, nullable=True)
     channel = Column(String, default="email", nullable=False, index=True)
@@ -116,9 +116,9 @@ class DBTask(Base):
     comments_json = Column(JSON, default=list, nullable=False)
     attachments_json = Column(JSON, default=list, nullable=False)
     timeline_json = Column(JSON, default=list, nullable=False)
-    created_at = Column(DateTime, default=datetime.now)
-    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
-    closed_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.now, index=True)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, index=True)
+    closed_at = Column(DateTime, nullable=True, index=True)
 
 class DBProject(Base):
     __tablename__ = "projects"
@@ -127,7 +127,7 @@ class DBProject(Base):
     name = Column(String, index=True)
     description = Column(String, nullable=True)
     status = Column(String, default="Planning", index=True)
-    lead_id = Column(String, ForeignKey("leads.id"), nullable=True)
+    lead_id = Column(String, ForeignKey("leads.id"), nullable=True, index=True)
     progress_percent = Column(Integer, default=0)
     budget_total = Column(Float, nullable=True)
     budget_spent = Column(Float, default=0.0)
@@ -135,8 +135,8 @@ class DBProject(Base):
     timeline_json = Column(JSON, default=list, nullable=False)
     deliverables_json = Column(JSON, default=list, nullable=False)
     due_date = Column(DateTime, nullable=True, index=True)
-    created_at = Column(DateTime, default=datetime.now)
-    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+    created_at = Column(DateTime, default=datetime.now, index=True)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, index=True)
 
 
 class DBOpportunity(Base):

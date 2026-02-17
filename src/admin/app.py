@@ -7626,9 +7626,23 @@ def create_app() -> FastAPI:
         return deleted
 
     @admin_v1.get("/projects")
-    def list_projects_v1(db: Session = Depends(get_db)) -> list[dict[str, Any]]:
-        projects = db.query(DBProject).order_by(DBProject.created_at.desc()).all()
-        return [_serialize_project(project) for project in projects]
+    def list_projects_v1(
+        page: int = Query(default=1, ge=1),
+        page_size: int = Query(default=25, ge=1, le=100),
+        db: Session = Depends(get_db),
+    ) -> dict[str, Any]:
+        query = db.query(DBProject)
+        total = query.count()
+        
+        offset = (page - 1) * page_size
+        projects = query.order_by(DBProject.created_at.desc()).offset(offset).limit(page_size).all()
+        
+        return {
+            "page": page,
+            "page_size": page_size,
+            "total": total,
+            "items": [_serialize_project(project) for project in projects],
+        }
 
     @admin_v1.get("/projects/{project_id}")
     def get_project_v1(

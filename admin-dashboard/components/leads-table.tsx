@@ -42,6 +42,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
+import { IconInfoCircle } from "@tabler/icons-react"
 import { ResponsiveDataView } from "@/components/responsive/responsive-data-view"
 import { requestApi } from "@/lib/api"
 
@@ -79,6 +86,196 @@ function SortIcon({ column, sort, order }: { column: string; sort: string; order
   if (sort !== column) return null
   return order === "asc" ? <span className="ml-1">^</span> : <span className="ml-1">v</span>
 }
+
+const LeadRow = React.memo(({
+  lead,
+  isSelected,
+  onSelect,
+  onDelete,
+  onCreateProject,
+  onCreateTask,
+}: {
+  lead: Lead
+  isSelected: boolean
+  onSelect: (id: string) => void
+  onDelete: (id: string) => void
+  onCreateProject: (lead: Lead) => void
+  onCreateTask: (lead: Lead) => void
+}) => {
+  return (
+    <TableRow data-state={isSelected && "selected"}>
+      <TableCell>
+        <Checkbox
+          checked={isSelected}
+          onCheckedChange={() => onSelect(lead.id)}
+          aria-label="Selectionner le lead"
+        />
+      </TableCell>
+      <TableCell>
+        <Link
+          href={`/leads/${encodeURIComponent(lead.id)}`}
+          className="block font-medium text-primary hover:underline"
+        >
+          {lead.name}
+        </Link>
+        <div className="text-xs text-muted-foreground">{lead.email}</div>
+      </TableCell>
+      <TableCell>{lead.company.name}</TableCell>
+      <TableCell>
+        <Badge
+          variant="outline"
+          className={statusColors[lead.status] || "bg-gray-500 border-none text-white"}
+        >
+          {lead.status}
+        </Badge>
+      </TableCell>
+      <TableCell>
+        <span className={`font-semibold ${scoreClass(lead.score)}`}>{lead.score}</span>
+      </TableCell>
+      <TableCell>{lead.segment}</TableCell>
+      <TableCell className="text-right">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" className="size-8">
+              <IconDotsVertical className="size-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-56">
+            <DropdownMenuItem asChild>
+              <Link
+                href={`/leads/${encodeURIComponent(lead.id)}`}
+                className="flex cursor-pointer items-center"
+              >
+                <IconEye className="size-4 mr-2" />
+                Voir details
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => onCreateProject(lead)}>
+              <IconFolderPlus className="size-4 mr-2" />
+              Creer un projet
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onCreateTask(lead)}>
+              <IconPlus className="size-4 mr-2" />
+              Creer une tache
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onClick={() => onDelete(lead.id)}
+              className="text-red-600 focus:text-red-600"
+            >
+              <IconTrash className="size-4 mr-2" />
+              Supprimer
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => toast.info("Flow audit disponible prochainement")}>
+              <IconRocket className="size-4 mr-2" />
+              Generer un audit
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </TableCell>
+    </TableRow>
+  )
+})
+
+const LeadCard = React.memo(({
+  lead,
+  isSelected,
+  onSelect,
+  onDelete,
+  onCreateProject,
+  onCreateTask,
+}: {
+  lead: Lead
+  isSelected: boolean
+  onSelect: (id: string) => void
+  onDelete: (id: string) => void
+  onCreateProject: (lead: Lead) => void
+  onCreateTask: (lead: Lead) => void
+}) => {
+  return (
+    <div className="rounded-lg border p-3">
+      <div className="flex items-start gap-2">
+        <Checkbox
+          checked={isSelected}
+          onCheckedChange={() => onSelect(lead.id)}
+          aria-label="Selectionner le lead"
+        />
+        <div className="min-w-0 flex-1">
+          <Link
+            href={`/leads/${encodeURIComponent(lead.id)}`}
+            className="block truncate font-medium text-primary hover:underline"
+          >
+            {lead.name}
+          </Link>
+          <p className="truncate text-xs text-muted-foreground">{lead.email}</p>
+          <p className="truncate text-xs text-muted-foreground">{lead.company.name}</p>
+        </div>
+        <Badge
+          variant="outline"
+          className={statusColors[lead.status] || "bg-gray-500 border-none text-white"}
+        >
+          {lead.status}
+        </Badge>
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+        <div>
+          <p className="text-muted-foreground">Score</p>
+          <p className={`font-semibold ${scoreClass(lead.score)}`}>{lead.score}</p>
+        </div>
+        <div>
+          <p className="text-muted-foreground">Segment</p>
+          <p className="truncate">{lead.segment}</p>
+        </div>
+      </div>
+      <div className="mt-2 flex justify-end">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" className="size-9">
+              <IconDotsVertical className="size-4" />
+              <span className="sr-only">Actions du lead</span>
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-56">
+            <DropdownMenuItem asChild>
+              <Link
+                href={`/leads/${encodeURIComponent(lead.id)}`}
+                className="flex cursor-pointer items-center"
+              >
+                <IconEye className="size-4 mr-2" />
+                Voir details
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => onCreateProject(lead)}>
+              <IconFolderPlus className="size-4 mr-2" />
+              Creer un projet
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onCreateTask(lead)}>
+              <IconPlus className="size-4 mr-2" />
+              Creer une tache
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onClick={() => onDelete(lead.id)}
+              className="text-red-600 focus:text-red-600"
+            >
+              <IconTrash className="size-4 mr-2" />
+              Supprimer
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => toast.info("Flow audit disponible prochainement")}>
+              <IconRocket className="size-4 mr-2" />
+              Generer un audit
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    </div>
+  )
+})
+
 
 export function LeadsTable({
   data,
@@ -173,6 +370,11 @@ export function LeadsTable({
   const [leadToDelete, setLeadToDelete] = React.useState<string | null>(null)
   const [isDeleting, setIsDeleting] = React.useState(false)
 
+  const [enrollCampaignId, setEnrollCampaignId] = React.useState("")
+  const [isEnrolling, setIsEnrolling] = React.useState(false)
+  const { data: campaignsData } = useSWR<{ items: { id: string; name: string; status: string }[] }>("/api/v1/admin/campaigns?limit=100", fetcher)
+  const activeCampaigns = React.useMemo(() => (campaignsData?.items || []).filter(c => c.status === "active"), [campaignsData])
+
   // Reset selection on page change or search change
   React.useEffect(() => {
     setSelectedLeads(new Set())
@@ -199,6 +401,25 @@ export function LeadsTable({
   const confirmDelete = (id: string) => {
     setLeadToDelete(id)
     setDeleteDialogOpen(true)
+  }
+
+  const executeBulkEnroll = async () => {
+    if (!enrollCampaignId || selectedLeads.size === 0) return
+    setIsEnrolling(true)
+    try {
+      const result = await requestApi<{ created: number; skipped: number }>(`/api/v1/admin/campaigns/${enrollCampaignId}/enroll`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lead_ids: Array.from(selectedLeads) })
+      })
+      toast.success(`${result.created} leads ajoutés à la campagne, ${result.skipped} déjà présents.`)
+      setSelectedLeads(new Set())
+      setEnrollCampaignId("")
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Erreur lors de l'ajout")
+    } finally {
+      setIsEnrolling(false)
+    }
   }
 
   const executeDelete = async () => {
@@ -276,436 +497,349 @@ export function LeadsTable({
   }
 
   return (
-    <div className="space-y-4">
-      {selectedLeads.size > 0 && (
-        <div className="bg-muted/50 rounded-md border border-blue-200 p-2">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <span className="ml-2 text-sm font-medium">{selectedLeads.size} selectionne(s)</span>
-            <Button
-              size="sm"
-              variant="destructive"
-              className="w-full sm:w-auto"
-              onClick={() => setDeleteDialogOpen(true)}
-            >
-              <IconTrash className="size-4 mr-2" />
-              Supprimer la selection
-            </Button>
+    <TooltipProvider>
+      <div className="space-y-4">
+        {selectedLeads.size > 0 && (
+          <div className="bg-muted/50 rounded-md border border-blue-200 p-2">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <span className="ml-2 text-sm font-medium">{selectedLeads.size} selectionne(s)</span>
+                <div className="flex items-center gap-2 ml-4">
+                  <Select value={enrollCampaignId} onValueChange={setEnrollCampaignId}>
+                    <SelectTrigger className="h-8 w-[200px]">
+                      <SelectValue placeholder="Choisir campagne" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {activeCampaigns.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button size="sm" onClick={executeBulkEnroll} disabled={!enrollCampaignId || isEnrolling}>
+                    {isEnrolling ? "Ajout..." : "Lancer automation"}
+                  </Button>
+                </div>
+              </div>
+              <Button
+                size="sm"
+                variant="destructive"
+                className="w-full sm:w-auto"
+                onClick={() => setDeleteDialogOpen(true)}
+              >
+                <IconTrash className="size-4 mr-2" />
+                Supprimer
+              </Button>
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div className="grid flex-1 gap-2 sm:flex sm:items-center">
-          <Input
-            placeholder="Rechercher..."
-            value={search}
-            onChange={(event) => onSearchChange(event.target.value)}
-            className="w-full sm:max-w-xs"
-          />
-          <Select
-            value={status}
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="grid flex-1 gap-2 sm:flex sm:items-center">
+            <Input
+              placeholder="Rechercher..."
+              value={search}
+              onChange={(event) => onSearchChange(event.target.value)}
+              className="w-full sm:max-w-xs"
+            />
+            <Select
+              value={status}
               onValueChange={(val) => {
                 onStatusChange(val)
                 toast.info(`Filtre applique: ${val === "ALL" ? "Tous" : val}`)
               }}
-          >
-            <SelectTrigger className="w-full sm:w-[180px]">
-              <SelectValue placeholder="Statut" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ALL">Tous les statuts</SelectItem>
-              <SelectItem value="NEW">New</SelectItem>
-              <SelectItem value="SCORED">Scored</SelectItem>
-              <SelectItem value="CONTACTED">Contacted</SelectItem>
-              <SelectItem value="INTERESTED">Interested</SelectItem>
-              <SelectItem value="CONVERTED">Converted</SelectItem>
-              <SelectItem value="LOST">Lost</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <p className="text-sm text-muted-foreground sm:text-right">{total} lead(s)</p>
-      </div>
-
-      <details className="rounded-lg border p-3">
-        <summary className="cursor-pointer text-sm font-medium">Filtres avances</summary>
-        <div className="mt-3 grid gap-3 md:grid-cols-3">
-          <Input
-            placeholder="Segment"
-            value={segment}
-            onChange={(event) => onSegmentChange(event.target.value)}
-          />
-          <Select value={tier} onValueChange={onTierChange}>
-            <SelectTrigger>
-              <SelectValue placeholder="Tier" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ALL">Tous les tiers</SelectItem>
-              <SelectItem value="Tier A">Tier A</SelectItem>
-              <SelectItem value="Tier B">Tier B</SelectItem>
-              <SelectItem value="Tier C">Tier C</SelectItem>
-              <SelectItem value="Tier D">Tier D</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select value={heatStatus} onValueChange={onHeatStatusChange}>
-            <SelectTrigger>
-              <SelectValue placeholder="Heat status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ALL">Tous les heat status</SelectItem>
-              <SelectItem value="Hot">Hot</SelectItem>
-              <SelectItem value="Warm">Warm</SelectItem>
-              <SelectItem value="Cold">Cold</SelectItem>
-            </SelectContent>
-          </Select>
-          <Input
-            placeholder="Entreprise"
-            value={company}
-            onChange={(event) => onCompanyChange(event.target.value)}
-          />
-          <Input
-            placeholder="Industrie"
-            value={industry}
-            onChange={(event) => onIndustryChange(event.target.value)}
-          />
-          <Input
-            placeholder="Localisation"
-            value={location}
-            onChange={(event) => onLocationChange(event.target.value)}
-          />
-          <Input
-            placeholder="Tag"
-            value={tag}
-            onChange={(event) => onTagChange(event.target.value)}
-          />
-          <Input
-            type="number"
-            min={0}
-            max={100}
-            placeholder="Score min"
-            value={minScore}
-            onChange={(event) => onMinScoreChange(event.target.value)}
-          />
-          <Input
-            type="number"
-            min={0}
-            max={100}
-            placeholder="Score max"
-            value={maxScore}
-            onChange={(event) => onMaxScoreChange(event.target.value)}
-          />
-          <Input
-            type="date"
-            value={createdFrom}
-            onChange={(event) => onCreatedFromChange(event.target.value)}
-          />
-          <Input
-            type="date"
-            value={createdTo}
-            onChange={(event) => onCreatedToChange(event.target.value)}
-          />
-          <Select value={hasEmail} onValueChange={(value) => onHasEmailChange(value as TriStateFilter)}>
-            <SelectTrigger>
-              <SelectValue placeholder="Email" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ANY">Email: tous</SelectItem>
-              <SelectItem value="YES">Email: oui</SelectItem>
-              <SelectItem value="NO">Email: non</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select value={hasPhone} onValueChange={(value) => onHasPhoneChange(value as TriStateFilter)}>
-            <SelectTrigger>
-              <SelectValue placeholder="Telephone" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ANY">Telephone: tous</SelectItem>
-              <SelectItem value="YES">Telephone: oui</SelectItem>
-              <SelectItem value="NO">Telephone: non</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select value={hasLinkedin} onValueChange={(value) => onHasLinkedinChange(value as TriStateFilter)}>
-            <SelectTrigger>
-              <SelectValue placeholder="LinkedIn" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ANY">LinkedIn: tous</SelectItem>
-              <SelectItem value="YES">LinkedIn: oui</SelectItem>
-              <SelectItem value="NO">LinkedIn: non</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </details>
-
-      <ResponsiveDataView
-        mobileCards={
-          data.length === 0 ? (
-            <div className="rounded-lg border py-8 text-center text-sm text-muted-foreground">
-              Aucun lead ne correspond a votre recherche.
-            </div>
-          ) : (
-            <>
-              <div className="flex items-center justify-between rounded-lg border px-3 py-2">
-                <span className="text-sm font-medium">Selection</span>
-                <Checkbox
-                  checked={data.length > 0 && selectedLeads.size === data.length}
-                  onCheckedChange={toggleSelectAll}
-                  aria-label="Tout selectionner"
-                />
-              </div>
-              {data.map((lead) => (
-                <div key={lead.id} className="rounded-lg border p-3">
-                  <div className="flex items-start gap-2">
-                    <Checkbox
-                      checked={selectedLeads.has(lead.id)}
-                      onCheckedChange={() => toggleSelectRow(lead.id)}
-                      aria-label="Selectionner le lead"
-                    />
-                    <div className="min-w-0 flex-1">
-                      <Link
-                        href={`/leads/${encodeURIComponent(lead.id)}`}
-                        className="block truncate font-medium text-primary hover:underline"
-                      >
-                        {lead.name}
-                      </Link>
-                      <p className="truncate text-xs text-muted-foreground">{lead.email}</p>
-                      <p className="truncate text-xs text-muted-foreground">{lead.company.name}</p>
-                    </div>
-                    <Badge
-                      variant="outline"
-                      className={statusColors[lead.status] || "bg-gray-500 border-none text-white"}
-                    >
-                      {lead.status}
-                    </Badge>
-                  </div>
-                  <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
-                    <div>
-                      <p className="text-muted-foreground">Score</p>
-                      <p className={`font-semibold ${scoreClass(lead.score)}`}>{lead.score}</p>
-                    </div>
-                    <div>
-                      <p className="text-muted-foreground">Segment</p>
-                      <p className="truncate">{lead.segment}</p>
-                    </div>
-                  </div>
-                  <div className="mt-2 flex justify-end">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="size-9">
-                          <IconDotsVertical className="size-4" />
-                          <span className="sr-only">Actions du lead</span>
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-56">
-                        <DropdownMenuItem asChild>
-                          <Link
-                            href={`/leads/${encodeURIComponent(lead.id)}`}
-                            className="flex cursor-pointer items-center"
-                          >
-                            <IconEye className="size-4 mr-2" />
-                            Voir details
-                          </Link>
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem onClick={() => createProjectFromLead(lead)}>
-                          <IconFolderPlus className="size-4 mr-2" />
-                          Creer un projet
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => createTaskFromLead(lead)}>
-                          <IconPlus className="size-4 mr-2" />
-                          Creer une tache
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem
-                          onClick={() => confirmDelete(lead.id)}
-                          className="text-red-600 focus:text-red-600"
-                        >
-                          <IconTrash className="size-4 mr-2" />
-                          Supprimer
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem onClick={() => toast.info("Flow audit disponible prochainement")}>
-                          <IconRocket className="size-4 mr-2" />
-                          Generer un audit
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                </div>
-              ))}
-            </>
-          )
-        }
-        desktopTable={
-          <div className="rounded-lg border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-[50px]">
-                    <Checkbox
-                      checked={data.length > 0 && selectedLeads.size === data.length}
-                      onCheckedChange={toggleSelectAll}
-                      aria-label="Tout selectionner"
-                    />
-                  </TableHead>
-                  <TableHead
-                    className="cursor-pointer hover:bg-muted/50"
-                    onClick={() => handleSort("first_name")}
-                  >
-                    Lead <SortIcon column="first_name" sort={sort} order={order} />
-                  </TableHead>
-                  <TableHead>Entreprise</TableHead>
-                  <TableHead
-                    className="cursor-pointer hover:bg-muted/50"
-                    onClick={() => handleSort("status")}
-                  >
-                    Statut <SortIcon column="status" sort={sort} order={order} />
-                  </TableHead>
-                  <TableHead
-                    className="cursor-pointer hover:bg-muted/50"
-                    onClick={() => handleSort("total_score")}
-                  >
-                    Score <SortIcon column="total_score" sort={sort} order={order} />
-                  </TableHead>
-                  <TableHead>Segment</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {data.map((lead) => (
-                  <TableRow key={lead.id} data-state={selectedLeads.has(lead.id) && "selected"}>
-                    <TableCell>
-                      <Checkbox
-                        checked={selectedLeads.has(lead.id)}
-                        onCheckedChange={() => toggleSelectRow(lead.id)}
-                        aria-label="Selectionner le lead"
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Link
-                        href={`/leads/${encodeURIComponent(lead.id)}`}
-                        className="block font-medium text-primary hover:underline"
-                      >
-                        {lead.name}
-                      </Link>
-                      <div className="text-xs text-muted-foreground">{lead.email}</div>
-                    </TableCell>
-                    <TableCell>{lead.company.name}</TableCell>
-                    <TableCell>
-                      <Badge
-                        variant="outline"
-                        className={statusColors[lead.status] || "bg-gray-500 border-none text-white"}
-                      >
-                        {lead.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <span className={`font-semibold ${scoreClass(lead.score)}`}>{lead.score}</span>
-                    </TableCell>
-                    <TableCell>{lead.segment}</TableCell>
-                    <TableCell className="text-right">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="size-8">
-                            <IconDotsVertical className="size-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-56">
-                          <DropdownMenuItem asChild>
-                            <Link
-                              href={`/leads/${encodeURIComponent(lead.id)}`}
-                              className="flex cursor-pointer items-center"
-                            >
-                              <IconEye className="size-4 mr-2" />
-                              Voir details
-                            </Link>
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem onClick={() => createProjectFromLead(lead)}>
-                            <IconFolderPlus className="size-4 mr-2" />
-                            Creer un projet
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => createTaskFromLead(lead)}>
-                            <IconPlus className="size-4 mr-2" />
-                            Creer une tache
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            onClick={() => confirmDelete(lead.id)}
-                            className="text-red-600 focus:text-red-600"
-                          >
-                            <IconTrash className="size-4 mr-2" />
-                            Supprimer
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem onClick={() => toast.info("Flow audit disponible prochainement")}>
-                            <IconRocket className="size-4 mr-2" />
-                            Generer un audit
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  </TableRow>
-                ))}
-                {data.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={7} className="py-8 text-center text-sm text-muted-foreground">
-                      Aucun lead ne correspond a votre recherche.
-                    </TableCell>
-                  </TableRow>
-                ) : null}
-              </TableBody>
-            </Table>
-          </div>
-        }
-      />
-
-      <div className="flex flex-col gap-2 py-2 sm:flex-row sm:items-center sm:justify-end sm:space-x-2">
-        <Button
-          variant="outline"
-          size="sm"
-          className="w-full sm:w-auto"
-          onClick={() => onPageChange(page - 1)}
-          disabled={page <= 1}
-        >
-          Precedent
-        </Button>
-        <div className="text-center text-sm text-muted-foreground sm:flex-1">
-          Page {page} sur {maxPage}
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          className="w-full sm:w-auto"
-          onClick={() => onPageChange(page + 1)}
-          disabled={page >= maxPage}
-        >
-          Suivant
-        </Button>
-      </div>
-      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Etes-vous absolument sur ?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Cette action est irreversible.
-              {leadToDelete ? " Ce lead sera definitivement supprime." : ` ${selectedLeads.size} leads seront definitivement supprimes.`}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isDeleting}>Annuler</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={(e) => {
-                e.preventDefault()
-                void executeDelete()
-              }}
-              disabled={isDeleting}
-              className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
             >
-              {isDeleting ? "Suppression..." : "Supprimer"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </div>
+              <SelectTrigger className="w-full sm:w-[180px]">
+                <SelectValue placeholder="Statut" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">Tous les statuts</SelectItem>
+                <SelectItem value="NEW">New</SelectItem>
+                <SelectItem value="SCORED">Scored</SelectItem>
+                <SelectItem value="CONTACTED">Contacted</SelectItem>
+                <SelectItem value="INTERESTED">Interested</SelectItem>
+                <SelectItem value="CONVERTED">Converted</SelectItem>
+                <SelectItem value="LOST">Lost</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <p className="text-sm text-muted-foreground sm:text-right">{total} lead(s)</p>
+        </div>
+
+        <details className="rounded-lg border p-3">
+          <summary className="cursor-pointer text-sm font-medium">Filtres avances</summary>
+          <div className="mt-3 grid gap-3 md:grid-cols-3">
+            <Input
+              placeholder="Segment"
+              value={segment}
+              onChange={(event) => onSegmentChange(event.target.value)}
+            />
+            <Select value={tier} onValueChange={onTierChange}>
+              <SelectTrigger>
+                <SelectValue placeholder="Tier" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">Tous les tiers</SelectItem>
+                <SelectItem value="Tier A">Tier A</SelectItem>
+                <SelectItem value="Tier B">Tier B</SelectItem>
+                <SelectItem value="Tier C">Tier C</SelectItem>
+                <SelectItem value="Tier D">Tier D</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={heatStatus} onValueChange={onHeatStatusChange}>
+              <SelectTrigger>
+                <SelectValue placeholder="Heat status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">Tous les heat status</SelectItem>
+                <SelectItem value="Hot">Hot</SelectItem>
+                <SelectItem value="Warm">Warm</SelectItem>
+                <SelectItem value="Cold">Cold</SelectItem>
+              </SelectContent>
+            </Select>
+            <Input
+              placeholder="Entreprise"
+              value={company}
+              onChange={(event) => onCompanyChange(event.target.value)}
+            />
+            <Input
+              placeholder="Industrie"
+              value={industry}
+              onChange={(event) => onIndustryChange(event.target.value)}
+            />
+            <Input
+              placeholder="Localisation"
+              value={location}
+              onChange={(event) => onLocationChange(event.target.value)}
+            />
+            <Input
+              placeholder="Tag"
+              value={tag}
+              onChange={(event) => onTagChange(event.target.value)}
+            />
+            <Input
+              type="number"
+              min={0}
+              max={100}
+              placeholder="Score min"
+              value={minScore}
+              onChange={(event) => onMinScoreChange(event.target.value)}
+            />
+            <Input
+              type="number"
+              min={0}
+              max={100}
+              placeholder="Score max"
+              value={maxScore}
+              onChange={(event) => onMaxScoreChange(event.target.value)}
+            />
+            <Input
+              type="date"
+              value={createdFrom}
+              onChange={(event) => onCreatedFromChange(event.target.value)}
+            />
+            <Input
+              type="date"
+              value={createdTo}
+              onChange={(event) => onCreatedToChange(event.target.value)}
+            />
+            <Select value={hasEmail} onValueChange={(value) => onHasEmailChange(value as TriStateFilter)}>
+              <SelectTrigger>
+                <SelectValue placeholder="Email" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ANY">Email: tous</SelectItem>
+                <SelectItem value="YES">Email: oui</SelectItem>
+                <SelectItem value="NO">Email: non</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={hasPhone} onValueChange={(value) => onHasPhoneChange(value as TriStateFilter)}>
+              <SelectTrigger>
+                <SelectValue placeholder="Telephone" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ANY">Telephone: tous</SelectItem>
+                <SelectItem value="YES">Telephone: oui</SelectItem>
+                <SelectItem value="NO">Telephone: non</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={hasLinkedin} onValueChange={(value) => onHasLinkedinChange(value as TriStateFilter)}>
+              <SelectTrigger>
+                <SelectValue placeholder="LinkedIn" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ANY">LinkedIn: tous</SelectItem>
+                <SelectItem value="YES">LinkedIn: oui</SelectItem>
+                <SelectItem value="NO">LinkedIn: non</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </details>
+
+        <ResponsiveDataView
+          mobileCards={
+            data.length === 0 ? (
+              <div className="rounded-lg border py-8 text-center text-sm text-muted-foreground">
+                Aucun lead ne correspond a votre recherche.
+              </div>
+            ) : (
+              <>
+                <div className="flex items-center justify-between rounded-lg border px-3 py-2">
+                  <span className="text-sm font-medium">Selection</span>
+                  <Checkbox
+                    checked={data.length > 0 && selectedLeads.size === data.length}
+                    onCheckedChange={toggleSelectAll}
+                    aria-label="Tout selectionner"
+                  />
+                </div>
+                {data.map((lead) => (
+                  <LeadCard
+                    key={lead.id}
+                    lead={lead}
+                    isSelected={selectedLeads.has(lead.id)}
+                    onSelect={toggleSelectRow}
+                    onDelete={confirmDelete}
+                    onCreateProject={createProjectFromLead}
+                    onCreateTask={createTaskFromLead}
+                  />
+                ))}
+              </>
+            )
+          }
+          desktopTable={
+            <div className="rounded-lg border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-[50px]">
+                      <Checkbox
+                        checked={data.length > 0 && selectedLeads.size === data.length}
+                        onCheckedChange={toggleSelectAll}
+                        aria-label="Tout selectionner"
+                      />
+                    </TableHead>
+                    <TableHead
+                      className="cursor-pointer hover:bg-muted/50"
+                      onClick={() => handleSort("first_name")}
+                    >
+                      Lead <SortIcon column="first_name" sort={sort} order={order} />
+                    </TableHead>
+                    <TableHead>Entreprise</TableHead>
+                    <TableHead
+                      className="cursor-pointer hover:bg-muted/50"
+                      onClick={() => handleSort("status")}
+                    >
+                      Statut <SortIcon column="status" sort={sort} order={order} />
+                    </TableHead>
+                    <TableHead
+                      className="cursor-pointer hover:bg-muted/50"
+                      onClick={() => handleSort("total_score")}
+                    >
+                      <div className="flex items-center gap-1">
+                        Score
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <IconInfoCircle className="size-3 text-muted-foreground" />
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p className="max-w-[200px]">
+                              Le score de qualite (0-100) calcule par l'IA en fonction de l'interet et du profil du lead.
+                            </p>
+                          </TooltipContent>
+                        </Tooltip>
+                        <SortIcon column="total_score" sort={sort} order={order} />
+                      </div>
+                    </TableHead>
+                    <TableHead>
+                      <div className="flex items-center gap-1">
+                        Segment
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <IconInfoCircle className="size-3 text-muted-foreground" />
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p className="max-w-[200px]">
+                              Groupe de leads ayant des caracteristiques similaires (secteur, taille, etc.).
+                            </p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </div>
+                    </TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {data.map((lead) => (
+                    <LeadRow
+                      key={lead.id}
+                      lead={lead}
+                      isSelected={selectedLeads.has(lead.id)}
+                      onSelect={toggleSelectRow}
+                      onDelete={confirmDelete}
+                      onCreateProject={createProjectFromLead}
+                      onCreateTask={createTaskFromLead}
+                    />
+                  ))}
+                  {data.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={7} className="py-8 text-center text-sm text-muted-foreground">
+                        Aucun lead ne correspond a votre recherche.
+                      </TableCell>
+                    </TableRow>
+                  ) : null}
+                </TableBody>
+              </Table>
+            </div>
+          }
+        />
+
+        <div className="flex flex-col gap-2 py-2 sm:flex-row sm:items-center sm:justify-end sm:space-x-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full sm:w-auto"
+            onClick={() => onPageChange(page - 1)}
+            disabled={page <= 1}
+          >
+            Precedent
+          </Button>
+          <div className="text-center text-sm text-muted-foreground sm:flex-1">
+            Page {page} sur {maxPage}
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full sm:w-auto"
+            onClick={() => onPageChange(page + 1)}
+            disabled={page >= maxPage}
+          >
+            Suivant
+          </Button>
+        </div>
+        <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Etes-vous absolument sur ?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Cette action est irreversible.
+                {leadToDelete ? " Ce lead sera definitivement supprime." : ` ${selectedLeads.size} leads seront definitivement supprimes.`}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={isDeleting}>Annuler</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={(e) => {
+                  e.preventDefault()
+                  void executeDelete()
+                }}
+                disabled={isDeleting}
+                className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
+              >
+                {isDeleting ? "Suppression..." : "Supprimer"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </div>
+    </TooltipProvider>
   )
 }

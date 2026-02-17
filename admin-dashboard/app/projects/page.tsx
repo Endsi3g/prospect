@@ -3,7 +3,7 @@
 import * as React from "react"
 import Link from "next/link"
 import useSWR from "swr"
-import { IconCalendar, IconFolder, IconPencil, IconTrash } from "@tabler/icons-react"
+import { IconCalendar, IconFolder, IconPencil, IconTrash, IconSearch } from "@tabler/icons-react"
 import { toast } from "sonner"
 
 import { ExportCsvButton } from "@/components/export-csv-button"
@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { EmptyState } from "@/components/ui/empty-state"
 import { ErrorState } from "@/components/ui/error-state"
+import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   Select,
@@ -36,30 +37,99 @@ type Project = {
   created_at?: string | null
 }
 
+const ProjectCard = React.memo(({
+  project,
+  onEdit,
+  onDelete
+}: {
+  project: Project;
+  onEdit: (project: Project) => void;
+  onDelete: (project: Project) => void;
+}) => (
+  <Card className="overflow-hidden rounded-xl border shadow-sm">
+    <div className="h-1 w-full bg-primary" />
+    <CardHeader className="space-y-2 pb-4">
+      <div className="flex items-start justify-between gap-2">
+        <CardTitle className="line-clamp-1 text-xl">
+          <Link href={`/projects/${project.id}`} className="hover:underline">
+            {project.name}
+          </Link>
+        </CardTitle>
+        <Badge variant="outline">{project.status}</Badge>
+      </div>
+      <p className="line-clamp-2 text-sm text-muted-foreground">
+        {project.description || "Aucune description"}
+      </p>
+    </CardHeader>
+    <CardContent className="space-y-4 pt-0">
+      <div className="flex items-center gap-3 text-sm text-muted-foreground">
+        <IconCalendar className="size-4" />
+        <span>{formatDateFr(project.due_date)}</span>
+      </div>
+      <div className="flex items-center justify-between border-t pt-3">
+        <Button variant="ghost" size="sm" asChild className="text-primary">
+          <Link href={`/projects/${project.id}`}>
+            <IconFolder className="size-4" />
+            Ouvrir
+          </Link>
+        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="ghost" size="icon" onClick={() => onEdit(project)}>
+            <IconPencil className="size-4" />
+          </Button>
+          <Button variant="ghost" size="icon" onClick={() => onDelete(project)}>
+            <IconTrash className="size-4 text-red-600" />
+          </Button>
+        </div>
+      </div>
+    </CardContent>
+  </Card>
+))
+
+ProjectCard.displayName = "ProjectCard"
+
 const PROJECT_STATUSES = ["all", "Planning", "In Progress", "On Hold", "Completed", "Cancelled"]
 const fetcher = <T,>(path: string) => requestApi<T>(path)
 
 export default function ProjectsPage() {
   const { openProjectForm, openConfirm } = useModalSystem()
-  const { data: projects, error, isLoading, mutate } = useSWR<Project[]>(
-    "/api/v1/admin/projects",
+  const [page, setPage] = React.useState(1)
+  const pageSize = 24
+  
+  const { data, error, isLoading, mutate } = useSWR<{
+    page: number
+    page_size: number
+    total: number
+    items: Project[]
+  }>(
+    `/api/v1/admin/projects?page=${page}&page_size=${pageSize}`,
     fetcher,
   )
+  const loadingTimedOut = useLoadingTimeout(isLoading, 12_000)
   const [updatedAt, setUpdatedAt] = React.useState<Date | null>(null)
 
   const [statusFilter, setStatusFilter] = React.useState("all")
   const [sortMode, setSortMode] = React.useState("newest")
+  const [search, setSearch] = React.useState("")
 
   React.useEffect(() => {
-    if (!projects) return
+    if (!data) return
     setUpdatedAt(new Date())
-  }, [projects])
+  }, [data])
+
+  const projects = data?.items || []
+  const total = data?.total || 0
+  const maxPage = Math.ceil(total / pageSize) || 1
 
   const displayedProjects = React.useMemo(() => {
     const source = projects || []
     const filtered = source.filter((project) => {
-      if (statusFilter === "all") return true
-      return project.status === statusFilter
+      const matchesStatus = statusFilter === "all" || project.status === statusFilter
+      const matchesSearch = !search.trim() ||
+        project.name.toLowerCase().includes(search.toLowerCase()) ||
+        project.description?.toLowerCase().includes(search.toLowerCase())
+
+      return matchesStatus && matchesSearch
     })
 
     const sorted = [...filtered]
@@ -85,7 +155,7 @@ export default function ProjectsPage() {
       return right - left
     })
     return sorted
-  }, [projects, sortMode, statusFilter])
+  }, [projects, sortMode, statusFilter, search])
 
   function createProject() {
     openProjectForm({
@@ -127,6 +197,14 @@ export default function ProjectsPage() {
       <SyncStatus updatedAt={updatedAt} />
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="flex-1">
+          <Input
+            placeholder="Rechercher un projet..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full sm:max-w-xs"
+          />
+        </div>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
           <SelectTrigger className="w-full sm:w-52">
             <SelectValue placeholder="Filtrer par statut" />
@@ -151,69 +229,76 @@ export default function ProjectsPage() {
         </Select>
       </div>
 
-      {isLoading ? (
+      {isLoading && !loadingTimedOut ? (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           <Skeleton className="h-48 w-full" />
           <Skeleton className="h-48 w-full" />
           <Skeleton className="h-48 w-full" />
         </div>
-      ) : error ? (
+      ) : error || loadingTimedOut ? (
         <ErrorState
           title="Impossible de charger les projets."
+          description={
+            loadingTimedOut
+              ? "Le chargement prend trop de temps. Vérifiez la connectivite API et reessayez."
+              : error instanceof Error
+                ? error.message
+                : "La liste des projets est indisponible pour le moment."
+          }
           onRetry={() => void mutate()}
         />
       ) : (
-        <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-          {displayedProjects.length > 0 ? (
-            displayedProjects.map((project) => (
-              <Card key={project.id} className="overflow-hidden rounded-xl border shadow-sm">
-                <div className="h-1 w-full bg-primary" />
-                <CardHeader className="space-y-2 pb-4">
-                  <div className="flex items-start justify-between gap-2">
-                    <CardTitle className="line-clamp-1 text-xl">
-                      <Link href={`/projects/${project.id}`} className="hover:underline">
-                        {project.name}
-                      </Link>
-                    </CardTitle>
-                    <Badge variant="outline">{project.status}</Badge>
-                  </div>
-                  <p className="line-clamp-2 text-sm text-muted-foreground">
-                    {project.description || "Aucune description"}
-                  </p>
-                </CardHeader>
-                <CardContent className="space-y-4 pt-0">
-                  <div className="flex items-center gap-3 text-sm text-muted-foreground">
-                    <IconCalendar className="size-4" />
-                    <span>{formatDateFr(project.due_date)}</span>
-                  </div>
-                  <div className="flex items-center justify-between border-t pt-3">
-                    <Button variant="ghost" size="sm" asChild className="text-primary">
-                      <Link href={`/projects/${project.id}`}>
-                        <IconFolder className="size-4" />
-                        Ouvrir
-                      </Link>
-                    </Button>
-                    <div className="flex items-center gap-2">
-                      <Button variant="ghost" size="icon" onClick={() => editProject(project)}>
-                        <IconPencil className="size-4" />
-                      </Button>
-                      <Button variant="ghost" size="icon" onClick={() => deleteProject(project)}>
-                        <IconTrash className="size-4 text-red-600" />
-                      </Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))
-          ) : (
-            <div className="col-span-full">
-              <EmptyState
-                title="Aucun projet"
-                description="Creez votre premier projet pour structurer vos actions commerciales."
-                action={<Button onClick={createProject}>Creer un projet</Button>}
-              />
+        <div className="space-y-6">
+          <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+            {displayedProjects.length > 0 ? (
+              displayedProjects.map((project) => (
+                <ProjectCard
+                  key={project.id}
+                  project={project}
+                  onEdit={editProject}
+                  onDelete={deleteProject}
+                />
+              ))
+            ) : (
+              <div className="col-span-full">
+                <EmptyState
+                  title="Aucun projet"
+                  description="Creez votre premier projet pour structurer vos actions commerciales."
+                  action={<Button onClick={createProject}>Creer un projet</Button>}
+                />
+              </div>
+            )}
+          </div>
+
+          <div className="flex flex-col gap-2 py-2 sm:flex-row sm:items-center sm:justify-end sm:space-x-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full sm:w-auto"
+              onClick={() => {
+                setPage(page - 1)
+                window.scrollTo({ top: 0, behavior: 'smooth' })
+              }}
+              disabled={page <= 1}
+            >
+              Precedent
+            </Button>
+            <div className="text-center text-sm text-muted-foreground sm:flex-1">
+              Page {page} sur {maxPage} ({total} projets)
             </div>
-          )}
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full sm:w-auto"
+              onClick={() => {
+                setPage(page + 1)
+                window.scrollTo({ top: 0, behavior: 'smooth' })
+              }}
+              disabled={page >= maxPage}
+            >
+              Suivant
+            </Button>
+          </div>
         </div>
       )}
     </AppShell>
