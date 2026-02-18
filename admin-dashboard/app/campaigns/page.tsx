@@ -306,12 +306,14 @@ export default function CampaignsPage() {
     setCampaignStrategy(pretty(strategy))
     if (strategy.email) {
       setStrategyEmail(true)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       setStrategyEmailDelay(String((strategy.email as any).delay || "24"))
     } else {
       setStrategyEmail(false)
     }
     if (strategy.linkedin) {
       setStrategyLinkedin(true)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       setStrategyLinkedinDelay(String((strategy.linkedin as any).delay || "48"))
     } else {
       setStrategyLinkedin(false)
@@ -621,7 +623,7 @@ export default function CampaignsPage() {
               <CardHeader className="flex flex-row items-center justify-between">
                 <CardTitle>{editingCampaignId ? `Edition de campagne: ${campaignName}` : "Creation de campagne"}</CardTitle>
                 {editingCampaignId && (
-                  <Button variant="ghost" size="sm" onClick={resetCampaignForm}>Annuler l'edition</Button>
+                  <Button variant="ghost" size="sm" onClick={resetCampaignForm}>Annuler l&apos;edition</Button>
                 )}
               </CardHeader>
               <CardContent>

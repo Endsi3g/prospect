@@ -49,7 +49,7 @@ export default function PublicLandingPage() {
       })
       setSubmitted(true)
       toast.success("Demande envoyée !")
-    } catch (err) {
+    } catch {
       toast.error("Une erreur est survenue.")
     } finally {
       setIsSubmitting(false)
@@ -113,21 +113,21 @@ export default function PublicLandingPage() {
             <form onSubmit={handleSubmit} className="mx-auto max-w-sm space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="clinic">Nom de votre établissement</Label>
-                <Input 
-                  id="clinic" 
-                  placeholder="Ma Clinique" 
-                  required 
+                <Input
+                  id="clinic"
+                  placeholder="Ma Clinique"
+                  required
                   value={clinicName}
                   onChange={(e) => setClinicName(e.target.value)}
                 />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="email">Email professionnel</Label>
-                <Input 
-                  id="email" 
-                  type="email" 
-                  placeholder="nom@clinique.com" 
-                  required 
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="nom@clinique.com"
+                  required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                 />
@@ -138,7 +138,7 @@ export default function PublicLandingPage() {
             </form>
           </section>
         </main>
-        
+
         <footer className="mt-20 py-8 text-sm text-slate-400">
           © 2026 ClinicFlow IA. Tous droits réservés.
         </footer>

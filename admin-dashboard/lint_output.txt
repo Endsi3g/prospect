@@ -1,0 +1,143 @@
+
+> admin-dashboard@0.1.0 lint
+> eslint
+
+
+C:\prospect\prospect\admin-dashboard\app\analytics\page.tsx
+  149:75  error  `'` can be escaped with `&apos;`, `&lsquo;`, `&#39;`, `&rsquo;`  react/no-unescaped-entities
+
+C:\prospect\prospect\admin-dashboard\app\builder\[id]\page.tsx
+   46:11  warning  'messages' is assigned a value but never used  @typescript-eslint/no-unused-vars
+   48:23  warning  'error' is assigned a value but never used     @typescript-eslint/no-unused-vars
+   70:14  warning  'err' is defined but never used                @typescript-eslint/no-unused-vars
+   85:42  error    Unexpected any. Specify a different type       @typescript-eslint/no-explicit-any
+  105:14  warning  'err' is defined but never used                @typescript-eslint/no-unused-vars
+
+C:\prospect\prospect\admin-dashboard\app\builder\page.tsx
+  65:14  warning  'err' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\prospect\prospect\admin-dashboard\app\campaigns\page.tsx
+  309:55  error  Unexpected any. Specify a different type                         @typescript-eslint/no-explicit-any
+  315:61  error  Unexpected any. Specify a different type                         @typescript-eslint/no-explicit-any
+  624:90  error  `'` can be escaped with `&apos;`, `&lsquo;`, `&#39;`, `&rsquo;`  react/no-unescaped-entities
+
+C:\prospect\prospect\admin-dashboard\app\help\page.tsx
+  13:10  warning  'Badge' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\prospect\prospect\admin-dashboard\app\leads\page.tsx
+  12:16  warning  'TabsContent' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\prospect\prospect\admin-dashboard\app\library\page.tsx
+    7:3   warning  'IconChecklist' is defined but never used                        @typescript-eslint/no-unused-vars
+    9:3   warning  'IconCircleCheck' is defined but never used                      @typescript-eslint/no-unused-vars
+   10:3   warning  'IconAlertCircle' is defined but never used                      @typescript-eslint/no-unused-vars
+   11:3   warning  'IconClock' is defined but never used                            @typescript-eslint/no-unused-vars
+   12:3   warning  'IconDownload' is defined but never used                         @typescript-eslint/no-unused-vars
+   15:3   warning  'IconRobot' is defined but never used                            @typescript-eslint/no-unused-vars
+   20:3   warning  'IconPaperclip' is defined but never used                        @typescript-eslint/no-unused-vars
+   21:3   warning  'IconX' is defined but never used                                @typescript-eslint/no-unused-vars
+   28:10  warning  'Card' is defined but never used                                 @typescript-eslint/no-unused-vars
+   28:16  warning  'CardContent' is defined but never used                          @typescript-eslint/no-unused-vars
+   28:29  warning  'CardHeader' is defined but never used                           @typescript-eslint/no-unused-vars
+   28:41  warning  'CardTitle' is defined but never used                            @typescript-eslint/no-unused-vars
+   28:52  warning  'CardDescription' is defined but never used                      @typescript-eslint/no-unused-vars
+   33:10  warning  'Separator' is defined but never used                            @typescript-eslint/no-unused-vars
+   35:3   warning  'Select' is defined but never used                               @typescript-eslint/no-unused-vars
+   36:3   warning  'SelectContent' is defined but never used                        @typescript-eslint/no-unused-vars
+   37:3   warning  'SelectItem' is defined but never used                           @typescript-eslint/no-unused-vars
+   38:3   warning  'SelectTrigger' is defined but never used                        @typescript-eslint/no-unused-vars
+   39:3   warning  'SelectValue' is defined but never used                          @typescript-eslint/no-unused-vars
+   71:13  error    Unexpected any. Specify a different type                         @typescript-eslint/no-explicit-any
+   93:16  warning  'setPage' is assigned a value but never used                     @typescript-eslint/no-unused-vars
+  136:14  warning  'err' is defined but never used                                  @typescript-eslint/no-unused-vars
+  152:63  error    Unexpected any. Specify a different type                         @typescript-eslint/no-explicit-any
+  158:14  warning  'err' is defined but never used                                  @typescript-eslint/no-unused-vars
+  226:46  error    Unexpected any. Specify a different type                         @typescript-eslint/no-explicit-any
+  288:18  error    `'` can be escaped with `&apos;`, `&lsquo;`, `&#39;`, `&rsquo;`  react/no-unescaped-entities
+
+C:\prospect\prospect\admin-dashboard\app\opportunities\page.tsx
+  206:9    warning  'assigned' is assigned a value but never used                    @typescript-eslint/no-unused-vars
+  542:16   error    'ResponsiveDataView' is not defined                              react/jsx-no-undef
+  582:22   error    'Table' is not defined                                           react/jsx-no-undef
+  583:24   error    'TableHeader' is not defined                                     react/jsx-no-undef
+  584:26   error    'TableRow' is not defined                                        react/jsx-no-undef
+  585:28   error    'TableHead' is not defined                                       react/jsx-no-undef
+  586:28   error    'TableHead' is not defined                                       react/jsx-no-undef
+  587:28   error    'TableHead' is not defined                                       react/jsx-no-undef
+  588:28   error    'TableHead' is not defined                                       react/jsx-no-undef
+  589:28   error    'TableHead' is not defined                                       react/jsx-no-undef
+  590:28   error    'TableHead' is not defined                                       react/jsx-no-undef
+  591:28   error    'TableHead' is not defined                                       react/jsx-no-undef
+  594:24   error    'TableBody' is not defined                                       react/jsx-no-undef
+  596:28   error    'TableRow' is not defined                                        react/jsx-no-undef
+  597:30   error    'TableCell' is not defined                                       react/jsx-no-undef
+  598:30   error    'TableCell' is not defined                                       react/jsx-no-undef
+  601:30   error    'TableCell' is not defined                                       react/jsx-no-undef
+  602:30   error    'TableCell' is not defined                                       react/jsx-no-undef
+  603:30   error    'TableCell' is not defined                                       react/jsx-no-undef
+  604:30   error    'TableCell' is not defined                                       react/jsx-no-undef
+  605:30   error    'TableCell' is not defined                                       react/jsx-no-undef
+  627:125  error    `'` can be escaped with `&apos;`, `&lsquo;`, `&#39;`, `&rsquo;`  react/no-unescaped-entities
+
+C:\prospect\prospect\admin-dashboard\app\p\[slug]\page.tsx
+  52:14  warning  'err' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\prospect\prospect\admin-dashboard\app\projects\[id]\page.tsx
+    4:10  warning  'useRouter' is defined but never used              @typescript-eslint/no-unused-vars
+   23:10  warning  'useLoadingTimeout' is defined but never used      @typescript-eslint/no-unused-vars
+   78:17  warning  'activity' is assigned a value but never used      @typescript-eslint/no-unused-vars
+   87:10  warning  'timeline' is assigned a value but never used      @typescript-eslint/no-unused-vars
+   90:10  warning  'deliverables' is assigned a value but never used  @typescript-eslint/no-unused-vars
+  156:14  warning  'e' is defined but never used                      @typescript-eslint/no-unused-vars
+  172:14  warning  'e' is defined but never used                      @typescript-eslint/no-unused-vars
+  194:14  warning  'error' is defined but never used                  @typescript-eslint/no-unused-vars
+  199:18  warning  'addTimelineMilestone' is defined but never used   @typescript-eslint/no-unused-vars
+  222:14  warning  'e' is defined but never used                      @typescript-eslint/no-unused-vars
+  227:18  warning  'addDeliverable' is defined but never used         @typescript-eslint/no-unused-vars
+  253:14  warning  'e' is defined but never used                      @typescript-eslint/no-unused-vars
+
+C:\prospect\prospect\admin-dashboard\app\projects\page.tsx
+    6:59  warning  'IconSearch' is defined but never used                                                                                                                                                            @typescript-eslint/no-unused-vars
+  121:9   warning  The 'projects' logical expression could make the dependencies of useMemo Hook (at line 159) change on every render. To fix this, wrap the initialization of 'projects' in its own useMemo() Hook  react-hooks/exhaustive-deps
+
+C:\prospect\prospect\admin-dashboard\components\data-table.tsx
+  368:17  warning  Compilation Skipped: Use of incompatible library
+
+This API returns functions which cannot be memoized without leading to stale UI. To prevent this, by default React Compiler will skip memoizing this component/hook. However, you may see issues if values from this API are passed to other components/hooks that are memoized.
+
+C:\prospect\prospect\admin-dashboard\components\data-table.tsx:368:17
+  366 |   )
+  367 |
+> 368 |   const table = useReactTable({
+      |                 ^^^^^^^^^^^^^ TanStack Table's `useReactTable()` API returns functions that cannot be memoized safely
+  369 |     data,
+  370 |     columns,
+  371 |     state: {  react-hooks/incompatible-library
+
+C:\prospect\prospect\admin-dashboard\components\leads-kanban.tsx
+   5:37  warning  'IconPlus' is defined but never used   @typescript-eslint/no-unused-vars
+   5:64  warning  'IconTrash' is defined but never used  @typescript-eslint/no-unused-vars
+  70:14  warning  'error' is defined but never used      @typescript-eslint/no-unused-vars
+
+C:\prospect\prospect\admin-dashboard\components\leads-table.tsx
+   96:17  error  Component definition is missing display name                     react/display-name
+  179:46  error  `"` can be escaped with `&quot;`, `&ldquo;`, `&#34;`, `&rdquo;`  react/no-unescaped-entities
+  179:52  error  `"` can be escaped with `&quot;`, `&ldquo;`, `&#34;`, `&rdquo;`  react/no-unescaped-entities
+  228:18  error  Component definition is missing display name                     react/display-name
+  280:11  error  `"` can be escaped with `&quot;`, `&ldquo;`, `&#34;`, `&rdquo;`  react/no-unescaped-entities
+  280:36  error  `"` can be escaped with `&quot;`, `&ldquo;`, `&#34;`, `&rdquo;`  react/no-unescaped-entities
+  823:72  error  `'` can be escaped with `&apos;`, `&lsquo;`, `&#39;`, `&rsquo;`  react/no-unescaped-entities
+  823:92  error  `'` can be escaped with `&apos;`, `&lsquo;`, `&#39;`, `&rsquo;`  react/no-unescaped-entities
+
+C:\prospect\prospect\admin-dashboard\components\secrets-modal.tsx
+   4:30  warning  'IconCheck' is defined but never used  @typescript-eslint/no-unused-vars
+  17:10  warning  'Label' is defined but never used      @typescript-eslint/no-unused-vars
+
+C:\prospect\prospect\admin-dashboard\components\send-sms-modal.tsx
+  33:3  warning  'leadPhone' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\prospect\prospect\admin-dashboard\components\tasks-table.tsx
+  500:49  error  `'` can be escaped with `&apos;`, `&lsquo;`, `&#39;`, `&rsquo;`  react/no-unescaped-entities
+
+Ô£û 91 problems (39 errors, 52 warnings)
+

@@ -53,7 +53,7 @@ export function SiteHeader() {
     <>
       <header className="flex h-(--header-height) shrink-0 items-center gap-2 border-b transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-(--header-height)">
         <div className="flex w-full items-center gap-1 px-3 sm:px-4 lg:gap-2 lg:px-6">
-          <SidebarTrigger className="-ml-1 size-9 sm:size-7" />
+          <SidebarTrigger className="-ml-1 size-9 sm:size-7 flex" />
           <Separator
             orientation="vertical"
             className="mx-1 hidden data-[orientation=vertical]:h-4 sm:mx-2 sm:block"
@@ -98,14 +98,14 @@ export function SiteHeader() {
       </header>
       {dataSource === "dev-fallback" ? (
         <div
-          className="flex items-center gap-2 border-b border-amber-600/45 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-950 sm:px-4 lg:px-6 dark:border-amber-500/40 dark:bg-amber-900/20 dark:text-amber-100"
+          className="flex items-center gap-2 border-b border-amber-600/45 bg-amber-50 px-3 py-1 text-[10px] sm:text-xs font-medium text-amber-950 sm:px-4 lg:px-6 dark:border-amber-500/40 dark:bg-amber-900/20 dark:text-amber-100"
           role="status"
           aria-live="polite"
           aria-atomic="true"
         >
-          <IconAlertTriangle className="size-4 shrink-0" />
+          <IconAlertTriangle className="size-3 sm:size-4 shrink-0" />
           <span className="truncate">
-            Source fallback locale active. Les donnees peuvent diverger de l&apos;API distante.
+            Source fallback locale active. Sync invalide.
           </span>
         </div>
       ) : null}

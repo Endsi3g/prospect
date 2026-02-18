@@ -4,40 +4,24 @@ import * as React from "react"
 import useSWR from "swr"
 import {
   IconBook,
-  IconChecklist,
-  IconFileText,
-  IconCircleCheck,
-  IconAlertCircle,
-  IconClock,
-  IconDownload,
   IconRefresh,
   IconSend,
-  IconRobot,
-  IconUser,
-  IconSearch,
-  IconSparkles,
   IconBrain,
-  IconPaperclip,
-  IconX
+  IconSparkles,
+  IconUser,
+  IconFileText,
+  IconSearch,
 } from "@tabler/icons-react"
 import { toast } from "sonner"
 
 import { AppSidebar } from "@/components/app-sidebar"
 import { SiteHeader } from "@/components/site-header"
 import { Badge } from "@/components/ui/badge"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Separator } from "@/components/ui/separator"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
+
 import {
   SidebarInset,
   SidebarProvider,
@@ -68,7 +52,7 @@ type DocsResponse = {
 type ChatMessage = {
   role: "user" | "assistant"
   content: string
-  sources?: any[]
+  sources?: { source: string }[]
   isThinking?: boolean
 }
 
@@ -90,7 +74,7 @@ function StatusDot({ status }: { status: DocItem["status"] }) {
 
 export default function LibraryPage() {
   const [search, setSearch] = React.useState("")
-  const [page, setPage] = React.useState(1)
+  const [page] = React.useState(1)
 
   // Chat state
   const [messages, setMessages] = React.useState<ChatMessage[]>([
@@ -133,7 +117,7 @@ export default function LibraryPage() {
         })
       }
       mutate()
-    } catch (err) {
+    } catch {
       toast.dismiss(toastId)
       toast.error("Erreur lors de la synchronisation.")
     } finally {
@@ -149,13 +133,13 @@ export default function LibraryPage() {
     setIsChatLoading(true)
 
     try {
-      const res = await requestApi<{ answer: string, sources: any[] }>("/api/v1/admin/rag/chat", {
+      const res = await requestApi<{ answer: string, sources: { source: string }[] }>("/api/v1/admin/rag/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ query: userMsg })
       })
       setMessages(prev => [...prev, { role: "assistant", content: res.answer, sources: res.sources }])
-    } catch (err) {
+    } catch {
       setMessages(prev => [...prev, { role: "assistant", content: "Désolé, je rencontre des difficultés pour accéder au cerveau..." }])
     } finally {
       setIsChatLoading(false)
@@ -223,7 +207,7 @@ export default function LibraryPage() {
 
                       {m.sources && m.sources.length > 0 && (
                         <div className="flex flex-wrap gap-2 mt-1">
-                          {m.sources.map((s: any, idx: number) => (
+                          {m.sources.map((s: { source: string }, idx: number) => (
                             <Badge
                               key={idx}
                               variant="secondary"
@@ -285,7 +269,7 @@ export default function LibraryPage() {
                 </div>
               </form>
               <p className="text-center text-[10px] text-muted-foreground mt-2">
-                L'IA peut faire des erreurs. Vérifiez toujours les sources.
+                L&apos;IA peut faire des erreurs. Vérifiez toujours les sources.
               </p>
             </div>
           </div>

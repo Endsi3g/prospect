@@ -497,7 +497,7 @@ export function TasksTable({
                             <SortIcon column="priority" sort={sort} order={order} />
                           </div>
                         </TooltipTrigger>
-                        <TooltipContent>Niveau d'importance de la tâche</TooltipContent>
+                        <TooltipContent>Niveau d&apos;importance de la tâche</TooltipContent>
                       </Tooltip>
                     </TooltipProvider>
                   </TableHead>

@@ -62,7 +62,7 @@ export default function BuilderPage() {
 
       toast.success("Page créée avec succès.")
       await mutate()
-    } catch (err) {
+    } catch {
       toast.error("Échec de la création de la page.")
     } finally {
       setIsCreating(false)
@@ -97,9 +97,9 @@ export default function BuilderPage() {
               <Skeleton className="h-48 w-full" />
             </div>
           ) : error ? (
-            <ErrorState 
-              title="Erreur lors du chargement des pages" 
-              description="Veuillez réessayer plus tard." 
+            <ErrorState
+              title="Erreur lors du chargement des pages"
+              description="Veuillez réessayer plus tard."
               onRetry={() => void mutate()}
             />
           ) : pages?.length === 0 ? (

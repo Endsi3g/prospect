@@ -146,7 +146,7 @@ export default function AnalyticsPage() {
                   <CardContent>
                     <div className="text-2xl font-bold">{formatNumberFr(analytics.total_leads)}</div>
                     <p className="text-xs text-muted-foreground">
-                      +{formatNumberFr(analytics.new_leads_today)} aujourd'hui
+                      +{formatNumberFr(analytics.new_leads_today)} aujourd&apos;hui
                     </p>
                   </CardContent>
                 </Card>

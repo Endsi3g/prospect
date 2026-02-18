@@ -176,7 +176,7 @@ const LeadRow = React.memo(({
                 <IconCopy className="size-4 text-blue-600" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Copier le script "Salon"</TooltipContent>
+            <TooltipContent>Copier le script &quot;Salon&quot;</TooltipContent>
           </Tooltip>
 
           <DropdownMenu>
@@ -224,6 +224,7 @@ const LeadRow = React.memo(({
     </TableRow>
   )
 })
+LeadRow.displayName = "LeadRow"
 
 const LeadCard = React.memo(({
   lead,
@@ -277,7 +278,7 @@ const LeadCard = React.memo(({
       </div>
       {lead.personalized_hook && (
         <div className="mt-2 rounded bg-muted/30 p-2 text-[10px] italic text-muted-foreground border-l-2 border-primary/20">
-          "{lead.personalized_hook}"
+          &quot;{lead.personalized_hook}&quot;
         </div>
       )}
       <div className="mt-3 flex items-center justify-between">
@@ -352,6 +353,7 @@ const LeadCard = React.memo(({
     </div>
   )
 })
+LeadCard.displayName = "LeadCard"
 
 
 export function LeadsTable({
@@ -820,7 +822,7 @@ export function LeadsTable({
                           </TooltipTrigger>
                           <TooltipContent>
                             <p className="max-w-[200px]">
-                              Le score de qualite (0-100) calcule par l'IA en fonction de l'interet et du profil du lead.
+                              Le score de qualite (0-100) calcule par l&apos;IA en fonction de l&apos;interet et du profil du lead.
                             </p>
                           </TooltipContent>
                         </Tooltip>

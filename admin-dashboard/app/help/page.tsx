@@ -10,7 +10,6 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Badge } from "@/components/ui/badge"
 import {
   SidebarInset,
   SidebarProvider,
@@ -46,7 +45,7 @@ const fetcher = <T,>(path: string) => requestApi<T>(path)
 export default function HelpPage() {
   const { messages } = useI18n()
   const { data, error, isLoading, mutate } = useSWR<HelpPayload>("/api/v1/admin/help", fetcher)
-  
+
   const [search, setSearch] = React.useState("")
 
   const onLaunchOnboarding = React.useCallback(() => {
@@ -56,8 +55,8 @@ export default function HelpPage() {
   const filteredFaqs = React.useMemo(() => {
     if (!data?.faqs || !search.trim()) return data?.faqs || []
     const q = search.toLowerCase()
-    return data.faqs.filter(f => 
-      f.question.toLowerCase().includes(q) || 
+    return data.faqs.filter(f =>
+      f.question.toLowerCase().includes(q) ||
       f.answer.toLowerCase().includes(q)
     )
   }, [data, search])
@@ -92,8 +91,8 @@ export default function HelpPage() {
 
           <div className="relative max-w-2xl">
             <IconSearch className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input 
-              placeholder="Rechercher une question, un guide ou un terme..." 
+            <Input
+              placeholder="Rechercher une question, un guide ou un terme..."
               className="pl-10 h-12 text-base shadow-sm"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -171,8 +170,8 @@ export default function HelpPage() {
                       </h3>
                       <div className="grid gap-3 sm:grid-cols-2">
                         {section.items.map((item) => (
-                          <a 
-                            key={item.label} 
+                          <a
+                            key={item.label}
                             href={item.href}
                             className="flex items-center justify-between rounded-lg border p-4 hover:bg-muted/50 transition-colors group"
                           >
@@ -253,7 +252,7 @@ export default function HelpPage() {
                       ))}
                     </div>
                   </div>
-                  
+
                   {data.updated_at && (
                     <p className="text-[10px] text-muted-foreground text-center pt-4">
                       Dernière mise à jour : {new Date(data.updated_at).toLocaleString()}

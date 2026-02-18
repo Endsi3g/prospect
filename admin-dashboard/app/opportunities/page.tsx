@@ -20,8 +20,10 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { ResponsiveDataView } from "@/components/responsive/responsive-data-view"
 import { IconFilter, IconChartBar } from "@tabler/icons-react"
 
 // ... existing imports ...
@@ -151,8 +153,8 @@ export default function OpportunitiesPage() {
 
   React.useEffect(() => { const t = window.setTimeout(() => setFDebounced(filters), 300); return () => window.clearTimeout(t) }, [filters])
   React.useEffect(() => { const t = window.setTimeout(() => setSearchLeadDebounced(searchLead.trim()), 250); return () => window.clearTimeout(t) }, [searchLead])
-  React.useEffect(() => { try { const v = window.localStorage.getItem("prospect:opportunities:view"); if (v === "kanban" || v === "table") setView(v) } catch {} }, [])
-  React.useEffect(() => { try { window.localStorage.setItem("prospect:opportunities:view", view) } catch {} }, [view])
+  React.useEffect(() => { try { const v = window.localStorage.getItem("prospect:opportunities:view"); if (v === "kanban" || v === "table") setView(v) } catch { } }, [])
+  React.useEffect(() => { try { window.localStorage.setItem("prospect:opportunities:view", view) } catch { } }, [view])
 
   const listPath = React.useMemo(() => {
     const p = new URLSearchParams()
@@ -203,12 +205,7 @@ export default function OpportunitiesPage() {
   }, [filtered])
 
   const summary = summaryData || { pipeline_value_total: filtered.reduce((a, b) => a + b.amount, 0), win_rate_percent: 0, avg_deal_size: 0, close_rate_percent: 0, forecast_monthly: [] }
-  const assigned = React.useMemo(() => {
-    const s = new Set<string>()
-    for (const row of rows) s.add(row.assigned_to)
-    for (const u of usersData?.items || []) s.add((u.display_name || "").trim() || u.email)
-    return Array.from(s).filter(Boolean).sort((a, b) => a.localeCompare(b, "fr"))
-  }, [rows, usersData?.items])
+
   const wonRows = React.useMemo(() => rows.filter((row) => row.stage === "Won"), [rows])
 
   React.useEffect(() => {
@@ -346,285 +343,285 @@ export default function OpportunitiesPage() {
   return (
     <AppShell contentClassName="p-3 pt-0 sm:p-4 sm:pt-0 lg:p-6">
       <div className="flex flex-1 flex-col gap-4">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <h2 className="text-3xl font-bold tracking-tight">Opportunités</h2>
-            <div className="flex flex-wrap gap-2">
-              <Button variant={view === "kanban" ? "default" : "outline"} onClick={() => setView("kanban")}><IconLayoutKanban className="size-4" />Kanban</Button>
-              <Button variant={view === "table" ? "default" : "outline"} onClick={() => setView("table")}><IconListDetails className="size-4" />Table</Button>
-              <Button onClick={() => setOpen(true)}><IconPlus className="size-4" />Créer une opportunité</Button>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <h2 className="text-3xl font-bold tracking-tight">Opportunités</h2>
+          <div className="flex flex-wrap gap-2">
+            <Button variant={view === "kanban" ? "default" : "outline"} onClick={() => setView("kanban")}><IconLayoutKanban className="size-4" />Kanban</Button>
+            <Button variant={view === "table" ? "default" : "outline"} onClick={() => setView("table")}><IconListDetails className="size-4" />Table</Button>
+            <Button onClick={() => setOpen(true)}><IconPlus className="size-4" />Créer une opportunité</Button>
+          </div>
+        </div>
+
+        <SyncStatus updatedAt={updatedAt} onRefresh={() => { void mutate(); void mutateSummary() }} />
+
+        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+          <Card><CardHeader className="pb-2"><CardDescription>Pipeline value total</CardDescription><CardTitle>{formatCurrencyFr(summary.pipeline_value_total)}</CardTitle></CardHeader></Card>
+          <Card><CardHeader className="pb-2"><CardDescription>Win rate</CardDescription><CardTitle>{summary.win_rate_percent.toFixed(1)}%</CardTitle></CardHeader></Card>
+          <Card><CardHeader className="pb-2"><CardDescription>Avg deal size</CardDescription><CardTitle>{formatCurrencyFr(summary.avg_deal_size)}</CardTitle></CardHeader></Card>
+          <Card><CardHeader className="pb-2"><CardDescription>Close rate</CardDescription><CardTitle>{summary.close_rate_percent.toFixed(1)}%</CardTitle></CardHeader></Card>
+        </div>
+
+        <Card className="overflow-hidden">
+          <Tabs defaultValue="filters" className="w-full">
+            <div className="flex items-center justify-between border-b px-4 py-2 bg-muted/30">
+              <div className="flex items-center gap-4">
+                <TabsList className="bg-transparent border-none h-auto p-0 gap-4">
+                  <TabsTrigger value="filters" className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-primary border-none p-0 flex items-center gap-2 h-8 text-xs font-bold uppercase tracking-wider">
+                    <IconFilter className="size-3.5" />
+                    Filtres
+                  </TabsTrigger>
+                  <TabsTrigger value="forecast" className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-primary border-none p-0 flex items-center gap-2 h-8 text-xs font-bold uppercase tracking-wider">
+                    <IconChartBar className="size-3.5" />
+                    Revenue Forecast
+                  </TabsTrigger>
+                </TabsList>
+              </div>
             </div>
-          </div>
-
-          <SyncStatus updatedAt={updatedAt} onRefresh={() => { void mutate(); void mutateSummary() }} />
-
-          <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
-            <Card><CardHeader className="pb-2"><CardDescription>Pipeline value total</CardDescription><CardTitle>{formatCurrencyFr(summary.pipeline_value_total)}</CardTitle></CardHeader></Card>
-            <Card><CardHeader className="pb-2"><CardDescription>Win rate</CardDescription><CardTitle>{summary.win_rate_percent.toFixed(1)}%</CardTitle></CardHeader></Card>
-            <Card><CardHeader className="pb-2"><CardDescription>Avg deal size</CardDescription><CardTitle>{formatCurrencyFr(summary.avg_deal_size)}</CardTitle></CardHeader></Card>
-            <Card><CardHeader className="pb-2"><CardDescription>Close rate</CardDescription><CardTitle>{summary.close_rate_percent.toFixed(1)}%</CardTitle></CardHeader></Card>
-          </div>
-
-          <Card className="overflow-hidden">
-            <Tabs defaultValue="filters" className="w-full">
-              <div className="flex items-center justify-between border-b px-4 py-2 bg-muted/30">
-                <div className="flex items-center gap-4">
-                  <TabsList className="bg-transparent border-none h-auto p-0 gap-4">
-                    <TabsTrigger value="filters" className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-primary border-none p-0 flex items-center gap-2 h-8 text-xs font-bold uppercase tracking-wider">
-                      <IconFilter className="size-3.5" />
-                      Filtres
-                    </TabsTrigger>
-                    <TabsTrigger value="forecast" className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-primary border-none p-0 flex items-center gap-2 h-8 text-xs font-bold uppercase tracking-wider">
-                      <IconChartBar className="size-3.5" />
-                      Revenue Forecast
-                    </TabsTrigger>
-                  </TabsList>
+            <TabsContent value="filters" className="mt-0 p-4">
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
+                <div className="space-y-1">
+                  <Label className="text-[10px] uppercase text-muted-foreground font-bold">Status</Label>
+                  <Select value={filters.status} onValueChange={(value) => setFilters((c) => ({ ...c, status: value }))}>
+                    <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                    <SelectContent><SelectItem value="ALL">Tous</SelectItem>{STAGES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
+                  </Select>
                 </div>
-              </div>
-              <TabsContent value="filters" className="mt-0 p-4">
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
-                  <div className="space-y-1">
-                    <Label className="text-[10px] uppercase text-muted-foreground font-bold">Status</Label>
-                    <Select value={filters.status} onValueChange={(value) => setFilters((c) => ({ ...c, status: value }))}>
-                      <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-                      <SelectContent><SelectItem value="ALL">Tous</SelectItem>{STAGES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-1"><Label className="text-[10px] uppercase text-muted-foreground font-bold">Amount min</Label><Input className="h-9" type="number" min={0} value={filters.amountMin} onChange={(e) => setFilters((c) => ({ ...c, amountMin: e.target.value }))} /></div>
-                  <div className="space-y-1"><Label className="text-[10px] uppercase text-muted-foreground font-bold">Amount max</Label><Input className="h-9" type="number" min={0} value={filters.amountMax} onChange={(e) => setFilters((c) => ({ ...c, amountMax: e.target.value }))} /></div>
-                  <div className="space-y-1">
-                    <Label className="text-[10px] uppercase text-muted-foreground font-bold">Date field</Label>
-                    <Select value={filters.dateField} onValueChange={(value) => setFilters((c) => ({ ...c, dateField: value as "close" | "created" }))}>
-                      <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-                      <SelectContent><SelectItem value="close">Close date</SelectItem><SelectItem value="created">Created date</SelectItem></SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-1"><Label className="text-[10px] uppercase text-muted-foreground font-bold">Date from</Label><Input className="h-9" type="date" value={filters.dateFrom} onChange={(e) => setFilters((c) => ({ ...c, dateFrom: e.target.value }))} /></div>
-                  <div className="space-y-1"><Label className="text-[10px] uppercase text-muted-foreground font-bold">Date to</Label><Input className="h-9" type="date" value={filters.dateTo} onChange={(e) => setFilters((c) => ({ ...c, dateTo: e.target.value }))} /></div>
+                <div className="space-y-1"><Label className="text-[10px] uppercase text-muted-foreground font-bold">Amount min</Label><Input className="h-9" type="number" min={0} value={filters.amountMin} onChange={(e) => setFilters((c) => ({ ...c, amountMin: e.target.value }))} /></div>
+                <div className="space-y-1"><Label className="text-[10px] uppercase text-muted-foreground font-bold">Amount max</Label><Input className="h-9" type="number" min={0} value={filters.amountMax} onChange={(e) => setFilters((c) => ({ ...c, amountMax: e.target.value }))} /></div>
+                <div className="space-y-1">
+                  <Label className="text-[10px] uppercase text-muted-foreground font-bold">Date field</Label>
+                  <Select value={filters.dateField} onValueChange={(value) => setFilters((c) => ({ ...c, dateField: value as "close" | "created" }))}>
+                    <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                    <SelectContent><SelectItem value="close">Close date</SelectItem><SelectItem value="created">Created date</SelectItem></SelectContent>
+                  </Select>
                 </div>
-              </TabsContent>
-              <TabsContent value="forecast" className="mt-0 p-4">
-                {summary.forecast_monthly.length === 0 ? (
-                  <div className="flex h-32 items-center justify-center rounded border border-dashed text-sm text-muted-foreground">Aucun forecast disponible.</div>
-                ) : (
-                  <ChartContainer config={chartConfig} className="h-32 w-full">
-                    <AreaChart data={summary.forecast_monthly}>
-                      <CartesianGrid vertical={false} />
-                      <XAxis dataKey="month" tickLine={false} axisLine={false} tickFormatter={(value) => new Date(`${value}-01`).toLocaleDateString("fr-FR", { month: "short", year: "2-digit" })} />
-                      <ChartTooltip cursor={false} content={<ChartTooltipContent indicator="dot" />} />
-                      <Area dataKey="expected_revenue" type="monotone" stroke="var(--color-expected_revenue)" fill="var(--color-expected_revenue)" fillOpacity={0.1} />
-                      <Area dataKey="weighted_revenue" type="monotone" stroke="var(--color-weighted_revenue)" fill="var(--color-weighted_revenue)" fillOpacity={0.25} />
-                    </AreaChart>
-                  </ChartContainer>
-                )}
-              </TabsContent>
-            </Tabs>
-          </Card>
+                <div className="space-y-1"><Label className="text-[10px] uppercase text-muted-foreground font-bold">Date from</Label><Input className="h-9" type="date" value={filters.dateFrom} onChange={(e) => setFilters((c) => ({ ...c, dateFrom: e.target.value }))} /></div>
+                <div className="space-y-1"><Label className="text-[10px] uppercase text-muted-foreground font-bold">Date to</Label><Input className="h-9" type="date" value={filters.dateTo} onChange={(e) => setFilters((c) => ({ ...c, dateTo: e.target.value }))} /></div>
+              </div>
+            </TabsContent>
+            <TabsContent value="forecast" className="mt-0 p-4">
+              {summary.forecast_monthly.length === 0 ? (
+                <div className="flex h-32 items-center justify-center rounded border border-dashed text-sm text-muted-foreground">Aucun forecast disponible.</div>
+              ) : (
+                <ChartContainer config={chartConfig} className="h-32 w-full">
+                  <AreaChart data={summary.forecast_monthly}>
+                    <CartesianGrid vertical={false} />
+                    <XAxis dataKey="month" tickLine={false} axisLine={false} tickFormatter={(value) => new Date(`${value}-01`).toLocaleDateString("fr-FR", { month: "short", year: "2-digit" })} />
+                    <ChartTooltip cursor={false} content={<ChartTooltipContent indicator="dot" />} />
+                    <Area dataKey="expected_revenue" type="monotone" stroke="var(--color-expected_revenue)" fill="var(--color-expected_revenue)" fillOpacity={0.1} />
+                    <Area dataKey="weighted_revenue" type="monotone" stroke="var(--color-weighted_revenue)" fill="var(--color-weighted_revenue)" fillOpacity={0.25} />
+                  </AreaChart>
+                </ChartContainer>
+              )}
+            </TabsContent>
+          </Tabs>
+        </Card>
 
-          <Card>
-            <CardHeader className="py-3 px-4">
-              <CardTitle className="text-sm">Handoff post-sale</CardTitle>
-            </CardHeader>
-            <CardContent className="grid gap-3 lg:grid-cols-4 p-4 pt-0">
-              <div className="space-y-1">
-                <Label className="text-[10px] uppercase text-muted-foreground font-bold">Opportunite</Label>
-                <Select value={handoffOpportunityId} onValueChange={setHandoffOpportunityId}>
-                  <SelectTrigger className="h-9"><SelectValue placeholder="Selectionner" /></SelectTrigger>
-                  <SelectContent>
-                    {wonRows.length === 0 ? <SelectItem value="none" disabled>Aucune opportunite Won</SelectItem> : null}
-                    {wonRows.map((row) => <SelectItem key={row.id} value={row.id}>{row.prospect_name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1">
-                <Label className="text-[10px] uppercase text-muted-foreground font-bold">Transfert vers</Label>
-                <Select value={handoffUserId} onValueChange={setHandoffUserId}>
-                  <SelectTrigger className="h-9"><SelectValue placeholder="Selectionner un utilisateur" /></SelectTrigger>
-                  <SelectContent>
-                    {(usersData?.items || []).map((user) => <SelectItem key={user.id} value={user.id}>{(user.display_name || "").trim() || user.email}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1">
-                <Label className="text-[10px] uppercase text-muted-foreground font-bold">Note</Label>
-                <Input className="h-9" value={handoffNote} onChange={(e) => setHandoffNote(e.target.value)} placeholder="Note contextuelle" />
-              </div>
-              <div className="flex items-end">
-                <Button className="h-9 w-full" disabled={handoffBusy || wonRows.length === 0 || !handoffOpportunityId} onClick={() => void createOpportunityHandoff()}>
-                  {handoffBusy ? "..." : "Creer handoff"}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+        <Card>
+          <CardHeader className="py-3 px-4">
+            <CardTitle className="text-sm">Handoff post-sale</CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-3 lg:grid-cols-4 p-4 pt-0">
+            <div className="space-y-1">
+              <Label className="text-[10px] uppercase text-muted-foreground font-bold">Opportunite</Label>
+              <Select value={handoffOpportunityId} onValueChange={setHandoffOpportunityId}>
+                <SelectTrigger className="h-9"><SelectValue placeholder="Selectionner" /></SelectTrigger>
+                <SelectContent>
+                  {wonRows.length === 0 ? <SelectItem value="none" disabled>Aucune opportunite Won</SelectItem> : null}
+                  {wonRows.map((row) => <SelectItem key={row.id} value={row.id}>{row.prospect_name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-[10px] uppercase text-muted-foreground font-bold">Transfert vers</Label>
+              <Select value={handoffUserId} onValueChange={setHandoffUserId}>
+                <SelectTrigger className="h-9"><SelectValue placeholder="Selectionner un utilisateur" /></SelectTrigger>
+                <SelectContent>
+                  {(usersData?.items || []).map((user) => <SelectItem key={user.id} value={user.id}>{(user.display_name || "").trim() || user.email}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-[10px] uppercase text-muted-foreground font-bold">Note</Label>
+              <Input className="h-9" value={handoffNote} onChange={(e) => setHandoffNote(e.target.value)} placeholder="Note contextuelle" />
+            </div>
+            <div className="flex items-end">
+              <Button className="h-9 w-full" disabled={handoffBusy || wonRows.length === 0 || !handoffOpportunityId} onClick={() => void createOpportunityHandoff()}>
+                {handoffBusy ? "..." : "Creer handoff"}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
 
-          {isLoading && !timeout ? <div className="space-y-3"><Skeleton className="h-24 w-full" /><Skeleton className="h-24 w-full" /></div> : null}
-          {!isLoading && (error || summaryError || timeout) ? (
-            <ErrorState title="Impossible de charger les opportunités." description={timeout ? "Le chargement est trop long." : error instanceof Error ? error.message : summaryError instanceof Error ? summaryError.message : "Erreur inconnue."} onRetry={() => { void mutate(); void mutateSummary() }} />
-          ) : null}
-          {!isLoading && !error && !timeout && filtered.length === 0 ? <EmptyState title="Aucune opportunité" description="Ajustez les filtres ou créez une opportunité." /> : null}
+        {isLoading && !timeout ? <div className="space-y-3"><Skeleton className="h-24 w-full" /><Skeleton className="h-24 w-full" /></div> : null}
+        {!isLoading && (error || summaryError || timeout) ? (
+          <ErrorState title="Impossible de charger les opportunités." description={timeout ? "Le chargement est trop long." : error instanceof Error ? error.message : summaryError instanceof Error ? summaryError.message : "Erreur inconnue."} onRetry={() => { void mutate(); void mutateSummary() }} />
+        ) : null}
+        {!isLoading && !error && !timeout && filtered.length === 0 ? <EmptyState title="Aucune opportunité" description="Ajustez les filtres ou créez une opportunité." /> : null}
 
-          {!isLoading && !error && !timeout && filtered.length > 0 ? (
-            view === "kanban" ? (
-              <DndContext sensors={sensors} onDragEnd={(event) => void drop(event)}>
-                <div className="flex snap-x snap-mandatory gap-3 overflow-x-auto pb-1 md:grid md:gap-4 md:overflow-visible xl:grid-cols-5">
-                  {STAGES.map((stage) => (
-                    <div key={stage} className="min-w-[280px] snap-start space-y-2 md:min-w-0">
-                      <div className="flex items-center justify-between"><h3 className="font-semibold">{stage}</h3><Badge variant="outline">{byStage[stage].length}</Badge></div>
-                      <DropCol stage={stage}>
-                        <div className="space-y-3">
-                          {byStage[stage].map((row) => (
-                            <DragCard key={row.id} item={row}>
-                              <div className="space-y-1 text-sm">
-                                <div className="flex items-center justify-between"><span className="text-muted-foreground">Deal value</span>{inline(row, "amount")}</div>
-                                <div className="flex items-center justify-between"><span className="text-muted-foreground">Probabilité</span>{inline(row, "probability")}</div>
-                                <div className="flex items-center justify-between"><span className="text-muted-foreground">Close date</span>{inline(row, "close_date")}</div>
-                                <div className="flex items-center justify-between"><span className="text-muted-foreground">Assigned to</span><span>{row.assigned_to}</span></div>
-                                {overdue(row) ? <div className="rounded border border-red-300 bg-red-50 px-2 py-1 text-xs text-red-700">Retard close date</div> : null}
-                                <div className="mt-3 flex items-center justify-between border-t pt-2">
-                                  <Link href={`/leads/${row.prospect_id}`} className="text-[10px] font-medium text-primary hover:underline uppercase">Voir fiche</Link>
-                                  <div className="flex items-center gap-1.5">
-                                    <button 
-                                      type="button" 
-                                      className="rounded p-1 hover:bg-accent disabled:opacity-30" 
-                                      disabled={!row.prospect?.phone}
-                                      onClick={() => {
-                                        setSelectedLead({ id: row.prospect_id, name: row.prospect_name, email: row.prospect?.email || "", phone: row.prospect?.phone || "" });
-                                        setWhatsappModalOpen(true);
-                                      }}
-                                    >
-                                      <IconBrandWhatsapp className="size-3.5 text-green-600" />
-                                    </button>
-                                    <button 
-                                      type="button" 
-                                      className="rounded p-1 hover:bg-accent disabled:opacity-30"
-                                      disabled={!row.prospect?.phone}
-                                      onClick={() => {
-                                        setSelectedLead({ id: row.prospect_id, name: row.prospect_name, email: row.prospect?.email || "", phone: row.prospect?.phone || "" });
-                                        setSmsModalOpen(true);
-                                      }}
-                                    >
-                                      <IconMail className="size-3.5 text-blue-600" />
-                                    </button>
-                                    <button 
-                                      type="button" 
-                                      className="rounded p-1 hover:bg-accent disabled:opacity-30"
-                                      disabled={!row.prospect?.email}
-                                      onClick={() => {
-                                        setSelectedLead({ id: row.prospect_id, name: row.prospect_name, email: row.prospect?.email || "", phone: row.prospect?.phone || "" });
-                                        setEmailModalOpen(true);
-                                      }}
-                                    >
-                                      <IconMail className="size-3.5 text-orange-600" />
-                                    </button>
-                                    <button 
-                                      type="button" 
-                                      className="rounded p-1 hover:bg-accent disabled:opacity-30"
-                                      disabled={!row.prospect?.phone}
-                                      onClick={() => {
-                                        setSelectedLead({ id: row.prospect_id, name: row.prospect_name, email: row.prospect?.email || "", phone: row.prospect?.phone || "" });
-                                        (window.location.href = `tel:${row.prospect?.phone}`);
-                                        setCallModalOpen(true);
-                                      }}
-                                    >
-                                      <IconPhone className="size-3.5 text-blue-600" />
-                                    </button>
-                                  </div>
+        {!isLoading && !error && !timeout && filtered.length > 0 ? (
+          view === "kanban" ? (
+            <DndContext sensors={sensors} onDragEnd={(event) => void drop(event)}>
+              <div className="flex snap-x snap-mandatory gap-3 overflow-x-auto pb-1 md:grid md:gap-4 md:overflow-visible xl:grid-cols-5">
+                {STAGES.map((stage) => (
+                  <div key={stage} className="min-w-[280px] snap-start space-y-2 md:min-w-0">
+                    <div className="flex items-center justify-between"><h3 className="font-semibold">{stage}</h3><Badge variant="outline">{byStage[stage].length}</Badge></div>
+                    <DropCol stage={stage}>
+                      <div className="space-y-3">
+                        {byStage[stage].map((row) => (
+                          <DragCard key={row.id} item={row}>
+                            <div className="space-y-1 text-sm">
+                              <div className="flex items-center justify-between"><span className="text-muted-foreground">Deal value</span>{inline(row, "amount")}</div>
+                              <div className="flex items-center justify-between"><span className="text-muted-foreground">Probabilité</span>{inline(row, "probability")}</div>
+                              <div className="flex items-center justify-between"><span className="text-muted-foreground">Close date</span>{inline(row, "close_date")}</div>
+                              <div className="flex items-center justify-between"><span className="text-muted-foreground">Assigned to</span><span>{row.assigned_to}</span></div>
+                              {overdue(row) ? <div className="rounded border border-red-300 bg-red-50 px-2 py-1 text-xs text-red-700">Retard close date</div> : null}
+                              <div className="mt-3 flex items-center justify-between border-t pt-2">
+                                <Link href={`/leads/${row.prospect_id}`} className="text-[10px] font-medium text-primary hover:underline uppercase">Voir fiche</Link>
+                                <div className="flex items-center gap-1.5">
+                                  <button
+                                    type="button"
+                                    className="rounded p-1 hover:bg-accent disabled:opacity-30"
+                                    disabled={!row.prospect?.phone}
+                                    onClick={() => {
+                                      setSelectedLead({ id: row.prospect_id, name: row.prospect_name, email: row.prospect?.email || "", phone: row.prospect?.phone || "" });
+                                      setWhatsappModalOpen(true);
+                                    }}
+                                  >
+                                    <IconBrandWhatsapp className="size-3.5 text-green-600" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="rounded p-1 hover:bg-accent disabled:opacity-30"
+                                    disabled={!row.prospect?.phone}
+                                    onClick={() => {
+                                      setSelectedLead({ id: row.prospect_id, name: row.prospect_name, email: row.prospect?.email || "", phone: row.prospect?.phone || "" });
+                                      setSmsModalOpen(true);
+                                    }}
+                                  >
+                                    <IconMail className="size-3.5 text-blue-600" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="rounded p-1 hover:bg-accent disabled:opacity-30"
+                                    disabled={!row.prospect?.email}
+                                    onClick={() => {
+                                      setSelectedLead({ id: row.prospect_id, name: row.prospect_name, email: row.prospect?.email || "", phone: row.prospect?.phone || "" });
+                                      setEmailModalOpen(true);
+                                    }}
+                                  >
+                                    <IconMail className="size-3.5 text-orange-600" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="rounded p-1 hover:bg-accent disabled:opacity-30"
+                                    disabled={!row.prospect?.phone}
+                                    onClick={() => {
+                                      setSelectedLead({ id: row.prospect_id, name: row.prospect_name, email: row.prospect?.email || "", phone: row.prospect?.phone || "" });
+                                      (window.location.href = `tel:${row.prospect?.phone}`);
+                                      setCallModalOpen(true);
+                                    }}
+                                  >
+                                    <IconPhone className="size-3.5 text-blue-600" />
+                                  </button>
                                 </div>
                               </div>
-                            </DragCard>
-                          ))}
-                        </div>
-                      </DropCol>
-                    </div>
-                  ))}
-                </div>
-              </DndContext>
-            ) : (
-              <ResponsiveDataView
-                mobileCards={
-                  filtered.map((row) => (
-                    <div key={row.id} className="rounded-lg border p-3">
-                      <div className="flex items-start justify-between gap-2">
-                        <p className="line-clamp-2 font-medium">{row.prospect_name}</p>
-                        <Badge variant="outline">{row.stage}</Badge>
-                      </div>
-                      <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
-                        <div>
-                          <p className="text-muted-foreground">Deal value</p>
-                          <div>{inline(row, "amount")}</div>
-                        </div>
-                        <div>
-                          <p className="text-muted-foreground">Probability</p>
-                          <div>{inline(row, "probability")}</div>
-                        </div>
-                        <div>
-                          <p className="text-muted-foreground">Close date</p>
-                          <div>{inline(row, "close_date")}</div>
-                        </div>
-                        <div>
-                          <p className="text-muted-foreground">Assigned to</p>
-                          <p className="truncate">{row.assigned_to}</p>
-                        </div>
-                      </div>
-                      <div className="mt-3">
-                        {overdue(row) ? (
-                          <span className="rounded border border-red-300 bg-red-50 px-2 py-1 text-xs text-red-700">
-                            Retard
-                          </span>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">OK</span>
-                        )}
-                      </div>
-                    </div>
-                  ))
-                }
-                desktopTable={
-                  <div className="rounded-xl border">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Prospect</TableHead>
-                          <TableHead>Stage</TableHead>
-                          <TableHead>Deal value</TableHead>
-                          <TableHead>Probability</TableHead>
-                          <TableHead>Close date</TableHead>
-                          <TableHead>Assigned to</TableHead>
-                          <TableHead>Alerte</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {filtered.map((row) => (
-                          <TableRow key={row.id}>
-                            <TableCell className="font-medium">{row.prospect_name}</TableCell>
-                            <TableCell>
-                              <Badge variant="outline">{row.stage}</Badge>
-                            </TableCell>
-                            <TableCell>{inline(row, "amount")}</TableCell>
-                            <TableCell>{inline(row, "probability")}</TableCell>
-                            <TableCell>{inline(row, "close_date")}</TableCell>
-                            <TableCell>{row.assigned_to}</TableCell>
-                            <TableCell>
-                              {overdue(row) ? (
-                                <span className="rounded border border-red-300 bg-red-50 px-2 py-1 text-xs text-red-700">
-                                  Retard
-                                </span>
-                              ) : (
-                                <span className="text-xs text-muted-foreground">OK</span>
-                              )}
-                            </TableCell>
-                          </TableRow>
+                            </div>
+                          </DragCard>
                         ))}
-                      </TableBody>
-                    </Table>
+                      </div>
+                    </DropCol>
                   </div>
-                }
-              />
-            )
-          ) : null}
+                ))}
+              </div>
+            </DndContext>
+          ) : (
+            <ResponsiveDataView
+              mobileCards={
+                filtered.map((row) => (
+                  <div key={row.id} className="rounded-lg border p-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="line-clamp-2 font-medium">{row.prospect_name}</p>
+                      <Badge variant="outline">{row.stage}</Badge>
+                    </div>
+                    <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                      <div>
+                        <p className="text-muted-foreground">Deal value</p>
+                        <div>{inline(row, "amount")}</div>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Probability</p>
+                        <div>{inline(row, "probability")}</div>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Close date</p>
+                        <div>{inline(row, "close_date")}</div>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Assigned to</p>
+                        <p className="truncate">{row.assigned_to}</p>
+                      </div>
+                    </div>
+                    <div className="mt-3">
+                      {overdue(row) ? (
+                        <span className="rounded border border-red-300 bg-red-50 px-2 py-1 text-xs text-red-700">
+                          Retard
+                        </span>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">OK</span>
+                      )}
+                    </div>
+                  </div>
+                ))
+              }
+              desktopTable={
+                <div className="rounded-xl border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Prospect</TableHead>
+                        <TableHead>Stage</TableHead>
+                        <TableHead>Deal value</TableHead>
+                        <TableHead>Probability</TableHead>
+                        <TableHead>Close date</TableHead>
+                        <TableHead>Assigned to</TableHead>
+                        <TableHead>Alerte</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filtered.map((row) => (
+                        <TableRow key={row.id}>
+                          <TableCell className="font-medium">{row.prospect_name}</TableCell>
+                          <TableCell>
+                            <Badge variant="outline">{row.stage}</Badge>
+                          </TableCell>
+                          <TableCell>{inline(row, "amount")}</TableCell>
+                          <TableCell>{inline(row, "probability")}</TableCell>
+                          <TableCell>{inline(row, "close_date")}</TableCell>
+                          <TableCell>{row.assigned_to}</TableCell>
+                          <TableCell>
+                            {overdue(row) ? (
+                              <span className="rounded border border-red-300 bg-red-50 px-2 py-1 text-xs text-red-700">
+                                Retard
+                              </span>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">OK</span>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              }
+            />
+          )
+        ) : null}
       </div>
 
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent className="sm:max-w-xl">
-          <SheetHeader><SheetTitle>Créer une opportunité</SheetTitle><SheetDescription>Renseignez le prospect, le montant, l'étape, la probabilité et la date de clôture prévue.</SheetDescription></SheetHeader>
+          <SheetHeader><SheetTitle>Créer une opportunité</SheetTitle><SheetDescription>Renseignez le prospect, le montant, l&apos;étape, la probabilité et la date de clôture prévue.</SheetDescription></SheetHeader>
           <div className="mt-4 space-y-4">
             <div className="space-y-2">
               <Label>Prospect</Label>
@@ -668,8 +665,8 @@ export default function OpportunitiesPage() {
 
       {selectedLead && (
         <>
-          <SendEmailModal 
-            open={emailModalOpen} 
+          <SendEmailModal
+            open={emailModalOpen}
             onOpenChange={setEmailModalOpen}
             leadId={selectedLead.id}
             leadName={selectedLead.name}

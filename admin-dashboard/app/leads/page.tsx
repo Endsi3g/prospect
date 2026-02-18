@@ -9,7 +9,7 @@ import { AppShell } from "@/components/layout/app-shell"
 import { Lead, LeadsTable } from "@/components/leads-table"
 import { LeadsKanban } from "@/components/leads-kanban"
 import { SyncStatus } from "@/components/sync-status"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { EmptyState } from "@/components/ui/empty-state"
 import { ErrorState } from "@/components/ui/error-state"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -193,9 +193,9 @@ export default function LeadsPage() {
       <div className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
         <h2 className="text-3xl font-bold tracking-tight">Leads</h2>
         <div className="flex items-center gap-2">
-          <Button 
-            variant={isSniperMode ? "default" : "outline"} 
-            size="sm" 
+          <Button
+            variant={isSniperMode ? "default" : "outline"}
+            size="sm"
             className={isSniperMode ? "bg-orange-600 hover:bg-orange-700" : ""}
             onClick={() => {
               const next = !isSniperMode
