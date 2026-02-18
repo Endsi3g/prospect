@@ -588,3 +588,20 @@ class DBLandingPage(Base):
     is_published = Column(Boolean, default=False, index=True)
     created_at = Column(DateTime, default=datetime.now, index=True)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+
+class DBDocument(Base):
+    __tablename__ = "library_documents"
+
+    id = Column(String, primary_key=True, index=True)
+    title = Column(String, nullable=False, index=True)
+    filename = Column(String, nullable=False)
+    file_path = Column(String, nullable=False)
+    file_type = Column(String, index=True) # pdf, docx, image, etc.
+    size_bytes = Column(Integer)
+    mime_type = Column(String)
+    metadata_json = Column(JSON, default=dict) # Store extracted metadata (author, pages, etc.)
+    owner_id = Column(String, ForeignKey("admin_users.id"), nullable=True)
+    is_public = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.now, index=True)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)

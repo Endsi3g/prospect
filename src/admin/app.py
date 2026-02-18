@@ -69,6 +69,7 @@ from . import campaign_service as _campaign_svc
 from . import content_service as _content_svc
 from . import enrichment_service as _enrichment_svc
 from . import funnel_service as _funnel_svc
+from . import landing_page_service as _landing_page_svc
 from .assistant_types import AssistantConfirmRequest, AssistantRunRequest
 from .diagnostics_service import (
     get_latest_autofix,
@@ -6726,6 +6727,12 @@ def create_app() -> FastAPI:
         dependencies=[Depends(require_admin), Depends(require_rate_limit)],
     )
 
+    builder_v1 = APIRouter(
+        prefix="/builder",
+        tags=["Builder"],
+        dependencies=[Depends(require_admin), Depends(require_rate_limit)],
+    )
+
     @app.get("/healthz")
     def healthcheck(db: Session = Depends(get_db)) -> dict[str, Any]:
         try:
@@ -9113,6 +9120,113 @@ def create_app() -> FastAPI:
         )
         return result
 
+    @admin_v1.get("/library/documents")
+    def list_library_documents(
+        query: str | None = None,
+        file_type: str | None = None,
+        db: Session = Depends(get_db),
+    ) -> list[dict[str, Any]]:
+        from ..core.db_models import DBDocument
+        stmt = db.query(DBDocument)
+        if query:
+            stmt = stmt.filter(DBDocument.title.ilike(f"%{query}%"))
+        if file_type:
+            stmt = stmt.filter(DBDocument.file_type == file_type)
+        
+        docs = stmt.order_by(DBDocument.created_at.desc()).all()
+        return [
+            {
+                "id": doc.id,
+                "title": doc.title,
+                "filename": doc.filename,
+                "file_type": doc.file_type,
+                "size_bytes": doc.size_bytes,
+                "mime_type": doc.mime_type,
+                "metadata": doc.metadata_json,
+                "created_at": doc.created_at.isoformat(),
+                "updated_at": doc.updated_at.isoformat(),
+            }
+            for doc in docs
+        ]
+
+    @admin_v1.post("/library/upload")
+    async def upload_library_document(
+        file: UploadFile = File(...),
+        title: str = Form(None),
+        db: Session = Depends(get_db),
+    ) -> dict[str, Any]:
+        from ..core.db_models import DBDocument
+        import shutil
+        
+        upload_dir = Path("uploads/library")
+        upload_dir.mkdir(parents=True, exist_ok=True)
+        
+        doc_id = str(uuid.uuid4())
+        ext = Path(file.filename).suffix.lower().lstrip('.')
+        filename = f"{doc_id}.{ext}"
+        file_path = upload_dir / filename
+        
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        
+        # Basic metadata extraction
+        stats = file_path.stat()
+        file_type = "image" if ext in {"jpg", "jpeg", "png", "gif", "webp", "svg"} else ext
+        
+        db_doc = DBDocument(
+            id=doc_id,
+            title=title or file.filename,
+            filename=file.filename,
+            file_path=str(file_path),
+            file_type=file_type,
+            size_bytes=stats.st_size,
+            mime_type=file.content_type,
+            metadata_json={
+                "extension": ext,
+                "last_modified": datetime.now().isoformat()
+            }
+        )
+        db.add(db_doc)
+        db.commit()
+        db.refresh(db_doc)
+        
+        return {"id": db_doc.id, "title": db_doc.title, "file_type": db_doc.file_type}
+
+    @admin_v1.get("/library/documents/{doc_id}/file")
+    def get_library_document_file(
+        doc_id: str,
+        db: Session = Depends(get_db),
+    ) -> Response:
+        from ..core.db_models import DBDocument
+        from fastapi.responses import FileResponse
+        
+        doc = db.query(DBDocument).filter(DBDocument.id == doc_id).first()
+        if not doc or not Path(doc.file_path).exists():
+            raise HTTPException(status_code=404, detail="Document non trouve")
+            
+        return FileResponse(
+            path=doc.file_path,
+            filename=doc.filename,
+            media_type=doc.mime_type
+        )
+
+    @admin_v1.delete("/library/documents/{doc_id}")
+    def delete_library_document(
+        doc_id: str,
+        db: Session = Depends(get_db),
+    ) -> dict[str, str]:
+        from ..core.db_models import DBDocument
+        doc = db.query(DBDocument).filter(DBDocument.id == doc_id).first()
+        if not doc:
+            raise HTTPException(status_code=404, detail="Document non trouve")
+        
+        if Path(doc.file_path).exists():
+            Path(doc.file_path).unlink()
+            
+        db.delete(doc)
+        db.commit()
+        return {"status": "success"}
+
     @admin_v1.post("/rag/chat")
     def chat_rag_v1(
         payload: AdminRAGChatRequest,
@@ -9331,6 +9445,106 @@ def create_app() -> FastAPI:
             logger.error("Capture lead error: %s", exc)
             return {"status": "error"}
 
+    # --- Landing Page Builder Routes ---
+    @builder_v1.get("/pages", response_model=list[LandingPage])
+    def list_landing_pages_v1(
+        skip: int = Query(0, ge=0),
+        limit: int = Query(100, ge=1, le=100),
+        db: Session = Depends(get_db),
+    ) -> list[LandingPage]:
+        db_pages = _landing_page_svc.list_landing_pages(db, skip=skip, limit=limit)
+        return [
+            LandingPage(
+                id=p.id,
+                name=p.name,
+                slug=p.slug,
+                title=p.title,
+                description=p.description,
+                content=p.content_json,
+                theme=p.theme_json,
+                is_published=p.is_published,
+                created_at=p.created_at,
+                updated_at=p.updated_at,
+            )
+            for p in db_pages
+        ]
+
+    @builder_v1.post("/pages", response_model=LandingPage)
+    def create_landing_page_v1(
+        payload: LandingPage, 
+        db: Session = Depends(get_db),
+    ) -> LandingPage:
+        db_page = _landing_page_svc.create_landing_page(
+            db,
+            name=payload.name,
+            slug=payload.slug,
+            title=payload.title,
+            description=payload.description,
+            content=payload.content,
+            theme=payload.theme,
+            is_published=payload.is_published,
+        )
+        return LandingPage(
+            id=db_page.id,
+            name=db_page.name,
+            slug=db_page.slug,
+            title=db_page.title,
+            description=db_page.description,
+            content=db_page.content_json,
+            theme=db_page.theme_json,
+            is_published=db_page.is_published,
+            created_at=db_page.created_at,
+            updated_at=db_page.updated_at,
+        )
+
+    @builder_v1.get("/pages/{page_id}", response_model=LandingPage)
+    def get_landing_page_v1(page_id: str, db: Session = Depends(get_db)) -> LandingPage:
+        p = _landing_page_svc.get_landing_page(db, page_id)
+        if not p:
+            raise HTTPException(status_code=404, detail="Page not found")
+        return LandingPage(
+            id=p.id,
+            name=p.name,
+            slug=p.slug,
+            title=p.title,
+            description=p.description,
+            content=p.content_json,
+            theme=p.theme_json,
+            is_published=p.is_published,
+            created_at=p.created_at,
+            updated_at=p.updated_at,
+        )
+
+    @builder_v1.patch("/pages/{page_id}", response_model=LandingPage)
+    def update_landing_page_v1(
+        page_id: str, 
+        payload: dict[str, Any], 
+        db: Session = Depends(get_db),
+    ) -> LandingPage:
+        p = _landing_page_svc.update_landing_page(db, page_id, payload)
+        if not p:
+             raise HTTPException(status_code=404, detail="Page not found")
+        return LandingPage(
+            id=p.id,
+            name=p.name,
+            slug=p.slug,
+            title=p.title,
+            description=p.description,
+            content=p.content_json,
+            theme=p.theme_json,
+            is_published=p.is_published,
+            created_at=p.created_at,
+            updated_at=p.updated_at,
+        )
+    
+    @builder_v1.delete("/pages/{page_id}")
+    def delete_landing_page_v1(page_id: str, db: Session = Depends(get_db)) -> dict:
+        ok = _landing_page_svc.delete_landing_page(db, page_id)
+        if not ok:
+            raise HTTPException(status_code=404, detail="Page not found")
+        return {"ok": True}
+
+    api_v1.include_router(builder_v1)
     api_v1.include_router(auth_v1)
     api_v1.include_router(admin_v1)
     app.include_router(api_v1)
