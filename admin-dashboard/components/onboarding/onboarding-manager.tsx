@@ -14,6 +14,7 @@ import {
   markOnboardingSkipped,
   ONBOARDING_OPEN_EVENT,
 } from "@/lib/onboarding"
+import { isPublicRoute } from "@/lib/auth-util"
 import { OnboardingWizard, type OnboardingStep } from "@/components/onboarding/onboarding-wizard"
 
 type AccountPayload = {
@@ -26,15 +27,8 @@ type AccountPayload = {
   updated_at?: string | null
 }
 
-const PUBLIC_ROUTES = new Set(["/", "/login", "/create-account", "/demo"])
-
 const fetcher = <T,>(path: string) =>
   requestApi<T>(path, undefined, { skipAuthRetry: true })
-
-function isPublicRoute(pathname: string): boolean {
-  if (PUBLIC_ROUTES.has(pathname)) return true
-  return false
-}
 
 export function OnboardingManager() {
   const pathname = usePathname()

@@ -1,5 +1,11 @@
 [
   {
+    "hash": "7cffeed",
+    "date": "2026-02-18",
+    "author": "Quebec SaaS",
+    "message": "fix: move grafana to port 3001 to avoid conflict with nextjs"
+  },
+  {
     "hash": "11ad951",
     "date": "2026-02-18",
     "author": "Quebec SaaS",
@@ -292,11 +298,5 @@
     "date": "2026-02-12",
     "author": "Quebec SaaS",
     "message": "fix(deploy): batch fixes for Netlify and Render (Node 20, psycopg2, API paths)"
-  },
-  {
-    "hash": "baa23c9",
-    "date": "2026-02-12",
-    "author": "Quebec SaaS",
-    "message": "fix: batch fixes across config, backend, frontend, and tests"
   }
 ]

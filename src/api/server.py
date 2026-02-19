@@ -15,8 +15,8 @@ root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__fil
 sys.path.append(root_dir)
 
 from src.core.database import SessionLocal, engine, Base
-from src.core.db_models import DBLead, DBTask, DBProject, DBCompany, DBLandingPage, DBAppointment, DBWorkflowRule, DBOpportunity
-from src.core.models import Lead, Task, TaskStatus, TaskPriority, Project, ProjectStatus, LandingPage, Appointment, WorkflowRule, LeadStatus
+from src.core.db_models import DBLead, DBTask, DBProject, DBCompany, DBLandingPage, DBAppointment, DBWorkflowRule, DBOpportunity, DBAccountProfile
+from src.core.models import Lead, Task, TaskStatus, TaskPriority, Project, ProjectStatus, LandingPage, Appointment, WorkflowRule, LeadStatus, AccountProfile
 from datetime import datetime
 from src.ai_engine.generator import MessageGenerator
 from src.scoring.engine import ScoringEngine
@@ -36,6 +36,12 @@ class DataSourceMiddleware(BaseHTTPMiddleware):
 
 app = FastAPI(title="Prospect Sales Machine API")
 app.add_middleware(DataSourceMiddleware)
+
+# Include Routers
+from src.api.routers import library, campaigns, rag
+app.include_router(library.router)
+app.include_router(campaigns.router)
+app.include_router(rag.router)
 
 # Dependency
 def get_db():
@@ -614,6 +620,44 @@ def get_stats(db: Session = Depends(get_db)):
         "pending_tasks": pending_tasks,
         "conversion_rate": round(conversion_rate, 1)
     }
+
+# --- ACCOUNT & ONBOARDING ---
+
+@app.get("/api/v1/admin/account", response_model=AccountProfile)
+def get_account(db: Session = Depends(get_db)):
+    profile = db.query(DBAccountProfile).filter(DBAccountProfile.key == "primary").first()
+    if not profile:
+        # Create a default profile if it doesn't exist
+        profile = DBAccountProfile(
+            key="primary",
+            full_name="Tony Stark",
+            email="stark@industrial.com",
+            title="Iron Man",
+            locale="fr-FR",
+            timezone="Europe/Paris",
+            preferences_json={"onboarding": "pending"}
+        )
+        db.add(profile)
+        db.commit()
+        db.refresh(profile)
+    return profile
+
+@app.put("/api/v1/admin/account", response_model=AccountProfile)
+def update_account(profile_update: AccountProfile, db: Session = Depends(get_db)):
+    db_profile = db.query(DBAccountProfile).filter(DBAccountProfile.key == "primary").first()
+    if not db_profile:
+        raise HTTPException(status_code=404, detail="Account not found")
+    
+    db_profile.full_name = profile_update.full_name
+    db_profile.email = profile_update.email
+    db_profile.title = profile_update.title
+    db_profile.locale = profile_update.locale
+    db_profile.timezone = profile_update.timezone
+    db_profile.preferences_json = profile_update.preferences
+    
+    db.commit()
+    db.refresh(db_profile)
+    return db_profile
 
 if __name__ == "__main__":
     import uvicorn

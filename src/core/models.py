@@ -199,3 +199,63 @@ class LandingPage(BaseModel):
     updated_at: datetime = Field(default_factory=datetime.now)
 
     model_config = ConfigDict(from_attributes=True)
+
+class LibraryDoc(BaseModel):
+    id: str
+    title: str
+    filename: str
+    file_type: str
+    size_bytes: int
+    mime_type: str
+    metadata: Dict[str, Any] = Field(default_factory=dict, alias="metadata_json")
+    created_at: datetime
+    updated_at: datetime
+    
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+class CampaignSequence(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    name: str
+    description: Optional[str] = None
+    status: str = "draft"
+    channels: List[str] = Field(default_factory=list, alias="channels_json")
+    steps: List[Dict[str, Any]] = Field(default_factory=list, alias="steps_json")
+    created_at: datetime = Field(default_factory=datetime.now)
+
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+class Campaign(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    name: str
+    description: Optional[str] = None
+    status: str = "draft"
+    sequence_id: Optional[str] = None
+    channel_strategy: Dict[str, Any] = Field(default_factory=dict, alias="channel_strategy_json")
+    enrollment_filter: Dict[str, Any] = Field(default_factory=dict, alias="enrollment_filter_json")
+    created_at: datetime = Field(default_factory=datetime.now)
+
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+class CampaignRun(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    campaign_id: str
+    lead_id: Optional[str] = None
+    trigger_source: str = "manual"
+    action_type: str = "nurture_step"
+    status: str = "pending"
+    step_index: int = 0
+    error_message: Optional[str] = None
+    created_at: datetime = Field(default_factory=datetime.now)
+
+    model_config = ConfigDict(from_attributes=True)
+
+class AccountProfile(BaseModel):
+    full_name: Optional[str] = None
+    email: Optional[str] = None
+    title: Optional[str] = None
+    locale: str = "fr-FR"
+    timezone: str = "Europe/Paris"
+    preferences: Dict[str, Any] = Field(default_factory=dict, alias="preferences_json")
+    updated_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)

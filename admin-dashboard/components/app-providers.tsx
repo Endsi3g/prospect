@@ -7,6 +7,7 @@ import { SWRConfig, useSWRConfig } from "swr"
 
 import { ModalSystemProvider } from "@/components/modal-system-provider"
 import { OnboardingManager } from "@/components/onboarding/onboarding-manager"
+import { SessionGuard } from "@/components/session-guard"
 import { ThemeProvider } from "@/components/theme-provider"
 import { Toaster } from "@/components/ui/sonner"
 import { requestApi } from "@/lib/api"
@@ -206,11 +207,13 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
                   <p className="sr-only" role="status" aria-live="polite">
                     {statusAnnouncement}
                   </p>
-                  <ModalSystemProvider>
-                    {children}
-                    <Toaster richColors closeButton position="top-right" />
-                    <OnboardingManager />
-                  </ModalSystemProvider>
+                  <SessionGuard>
+                    <ModalSystemProvider>
+                      {children}
+                      <Toaster richColors closeButton position="top-right" />
+                      <OnboardingManager />
+                    </ModalSystemProvider>
+                  </SessionGuard>
                 </SettingsSyncer>
               </DataSourceSyncer>
             </SWRConfig>

@@ -148,7 +148,7 @@ export default function LibraryPage() {
 
   const downloadFile = (id: string, e: React.MouseEvent) => {
     e.stopPropagation()
-    window.open(`/api/v1/admin/library/documents/${id}/file`, "_blank")
+    window.open(`/api/v1/admin/library/documents/${id}/download`, "_blank")
   }
 
   return (
@@ -189,11 +189,11 @@ export default function LibraryPage() {
                   <IconPlus className="size-3.5" />
                   Ajouter
                 </Button>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  className="h-8 px-2" 
-                  onClick={handleIngest} 
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 px-2"
+                  onClick={handleIngest}
                   disabled={isIngesting}
                   title="Synchroniser RAG"
                 >
@@ -234,10 +234,10 @@ export default function LibraryPage() {
                           <Button size="icon" variant="ghost" className="h-8 w-8 text-white hover:bg-white/20" onClick={(e) => downloadFile(doc.id, e)}>
                             <IconDownload className="size-4" />
                           </Button>
-                          <Button 
-                            size="icon" 
-                            variant="ghost" 
-                            className="h-8 w-8 text-white hover:bg-red-500/80" 
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-8 w-8 text-white hover:bg-red-500/80"
                             onClick={(e) => handleDelete(doc.id, e)}
                             disabled={isDeleting === doc.id}
                           >
@@ -343,10 +343,10 @@ export default function LibraryPage() {
         </div>
       </SidebarInset>
 
-      <UploadModal 
-        open={isUploadOpen} 
-        onOpenChange={setIsUploadOpen} 
-        onSuccess={() => mutate()} 
+      <UploadModal
+        open={isUploadOpen}
+        onOpenChange={setIsUploadOpen}
+        onSuccess={() => mutate()}
       />
 
       {previewDoc && (

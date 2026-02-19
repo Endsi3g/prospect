@@ -14,6 +14,8 @@ import { toast } from "sonner"
 import { AppSidebar } from "@/components/app-sidebar"
 import { ExportCsvButton } from "@/components/export-csv-button"
 import { SiteHeader } from "@/components/site-header"
+import { DailyTrendChart } from "@/components/reports/daily-trend-chart"
+import { ChannelChart } from "@/components/reports/channel-chart"
 import { SyncStatus } from "@/components/sync-status"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -391,42 +393,18 @@ export default function ReportsPage() {
                 <CardHeader>
                   <CardTitle>Tendance quotidienne</CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-2">
-                  {trendTail.map((day) => (
-                    <div key={day.date} className="grid grid-cols-6 gap-2 rounded border p-2 text-xs">
-                      <div>{formatDateFr(day.date)}</div>
-                      <div>Creees: {day.created}</div>
-                      <div>Scorees: {day.scored}</div>
-                      <div>Contactees: {day.contacted}</div>
-                      <div>Taches: {day.tasks_created}</div>
-                      <div>Done: {day.tasks_completed}</div>
-                    </div>
-                  ))}
-                  {trendTail.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">Aucune tendance disponible.</p>
-                  ) : null}
+                <CardContent>
+                  <DailyTrendChart data={report30d.daily_trend} />
                 </CardContent>
               </Card>
 
               <Card>
                 <CardHeader>
-                  <CardTitle>Canaux & qualite</CardTitle>
+                  <CardTitle>Canaux & Performance</CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-3">
-                  <div className="space-y-2">
-                    {report30d.channel_breakdown.map((item) => (
-                      <div key={item.channel} className="rounded border p-2 text-sm">
-                        <p className="font-medium">{channelLabel(item.channel)}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {item.count} taches | completees: {item.completed}
-                        </p>
-                      </div>
-                    ))}
-                    {report30d.channel_breakdown.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">Aucune tache sur la periode.</p>
-                    ) : null}
-                  </div>
-                  <div className="rounded border p-3 text-xs">
+                <CardContent>
+                  <ChannelChart data={report30d.channel_breakdown} />
+                  <div className="mt-4 rounded border p-3 text-xs space-y-1">
                     <p>Leads non rescored recents: {report30d.quality_flags.stale_unscored_leads}</p>
                     <p>Taches sans assignee: {report30d.quality_flags.unassigned_tasks}</p>
                     <p>Taux completion taches: {Math.round(report30d.kpis.task_completion_rate)}%</p>
