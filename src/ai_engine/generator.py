@@ -2,30 +2,88 @@ from .prompts import COLD_EMAIL_TEMPLATE, LINKEDIN_CONNECTION_TEMPLATE, LINKEDIN
 from ..core.models import Lead
 from openai import OpenAI
 import os
+import json
+from typing import Dict
 
 class MessageGenerator:
+    """AI content generator with cascading provider fallback.
+
+    Resolution order (first available wins):
+    1. Explicit ``LLM_PROVIDER`` env var (``openai``, ``groq``, ``ollama``)
+    2. Auto-detect: OpenAI key → Groq key → local Ollama → templates only
+    """
+
     def __init__(self):
         from ..admin.secrets_manager import secrets_manager
-        
-        self.provider = os.getenv("LLM_PROVIDER", "openai").lower()
-        self.model_name = os.getenv("LLM_MODEL", "gpt-4o-mini")
-        self.client = None
 
-        if self.provider == "ollama":
-            base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
-            # OpenAI client compatible with Ollama
-            self.client = OpenAI(
-                base_url=base_url,
-                api_key="ollama"  # key required but ignored
-            )
-            print(f"AI Engine initialized with Ollama (model: {self.model_name})")
-        else:
-            # Default to OpenAI
+        explicit_provider = os.getenv("LLM_PROVIDER", "").lower().strip()
+        self.client = None
+        self.provider = "none"
+        self.model_name = os.getenv("LLM_MODEL", "")
+
+        # --- Explicit provider ------------------------------------------------
+        if explicit_provider == "openai":
             api_key = secrets_manager.resolve_secret(None, "OPENAI_API_KEY")
             if api_key:
                 self.client = OpenAI(api_key=api_key)
-            else:
-                print("Warning: OPENAI_API_KEY not found. AI features disabled.")
+                self.provider = "openai"
+                self.model_name = self.model_name or "gpt-4o-mini"
+            # If key missing, fall through to auto-detect below
+
+        elif explicit_provider == "groq":
+            api_key = secrets_manager.resolve_secret(None, "GROQ_API_KEY") or os.getenv("GROQ_API_KEY", "")
+            if api_key:
+                self.client = OpenAI(
+                    base_url="https://api.groq.com/openai/v1",
+                    api_key=api_key,
+                )
+                self.provider = "groq"
+                self.model_name = self.model_name or "llama-3.3-70b-versatile"
+
+        elif explicit_provider == "ollama":
+            base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
+            self.client = OpenAI(base_url=base_url, api_key="ollama")
+            self.provider = "ollama"
+            self.model_name = self.model_name or "llama3.1:8b-instruct"
+
+        # --- Auto-detect (no explicit provider or explicit failed) -------------
+        if self.client is None:
+            # Try OpenAI
+            openai_key = secrets_manager.resolve_secret(None, "OPENAI_API_KEY")
+            if openai_key:
+                self.client = OpenAI(api_key=openai_key)
+                self.provider = "openai"
+                self.model_name = self.model_name or "gpt-4o-mini"
+
+        if self.client is None:
+            # Try Groq
+            groq_key = secrets_manager.resolve_secret(None, "GROQ_API_KEY") or os.getenv("GROQ_API_KEY", "")
+            if groq_key:
+                self.client = OpenAI(
+                    base_url="https://api.groq.com/openai/v1",
+                    api_key=groq_key,
+                )
+                self.provider = "groq"
+                self.model_name = self.model_name or "llama-3.3-70b-versatile"
+
+        if self.client is None:
+            # Try local Ollama (check if accessible)
+            ollama_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
+            try:
+                import httpx
+                resp = httpx.get(ollama_url.replace("/v1", ""), timeout=2.0)
+                if resp.status_code == 200:
+                    self.client = OpenAI(base_url=ollama_url, api_key="ollama")
+                    self.provider = "ollama"
+                    self.model_name = self.model_name or "llama3.1:8b-instruct"
+            except Exception:
+                pass  # Ollama not running
+
+        # Log result
+        if self.client:
+            print(f"AI Engine initialized: provider={self.provider}, model={self.model_name}")
+        else:
+            print("Warning: No AI provider available. Using template fallbacks only.")
 
     def generate_gpt_content(self, prompt: str) -> str:
         if not self.client:
@@ -183,12 +241,11 @@ class MessageGenerator:
         """
         
         try:
-            response = self.client.chat.completions.create(
-                model=self.model_name,
-                messages=[{"role": "user", "content": prompt}],
-                response_format={ "type": "json_object" }
-            )
-            import json
+            kwargs = {"model": self.model_name, "messages": [{"role": "user", "content": prompt}]}
+            # Only use json_object format for providers that support it
+            if self.provider in ("openai", "groq"):
+                kwargs["response_format"] = {"type": "json_object"}
+            response = self.client.chat.completions.create(**kwargs)
             return json.loads(response.choices[0].message.content)
         except Exception as e:
             print(f"Landing Page Generation Error: {e}")

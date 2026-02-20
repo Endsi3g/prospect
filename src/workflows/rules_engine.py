@@ -3,8 +3,11 @@ from ..core.models import Lead
 from ..core.db_models import DBWorkflowRule, DBLead, DBTask
 from ..core.logging import get_logger
 from sqlalchemy.orm import Session
+import json
 import uuid
 from datetime import datetime
+
+import httpx
 
 logger = get_logger(__name__)
 
@@ -60,6 +63,8 @@ class RulesEngine:
         - create_task: Create a task for the lead
         - change_stage: Update lead stage
         - change_status: Update lead status
+        - send_webhook: POST lead data to an external URL
+        - add_tag: Add a tag to the lead
         """
         if action_type == "create_task":
             task = DBTask(
@@ -70,8 +75,6 @@ class RulesEngine:
                 priority=config.get("priority", "Medium"),
                 lead_id=lead.id,
                 source="workflow_automation",
-                # rule_id could be added if we had the rule object context here, 
-                # but for now we keep it simple or pass it if needed.
             )
             self.db.add(task)
             self.db.commit()
@@ -92,3 +95,44 @@ class RulesEngine:
                 lead.updated_at = datetime.now()
                 self.db.commit()
                 logger.info(f"Lead {lead.id} status updated to {new_status}")
+
+        elif action_type == "send_webhook":
+            url = config.get("url")
+            if not url:
+                logger.warning("send_webhook action missing 'url' in config")
+                return
+            payload = {
+                "event": "workflow_trigger",
+                "lead_id": lead.id,
+                "email": lead.email,
+                "first_name": lead.first_name,
+                "last_name": lead.last_name,
+                "status": lead.status,
+                "stage": getattr(lead, "stage", None),
+                "total_score": lead.total_score,
+                "tier": lead.tier,
+            }
+            try:
+                resp = httpx.post(url, json=payload, timeout=10.0)
+                logger.info(
+                    f"Webhook sent for lead {lead.id} to {url} — status {resp.status_code}"
+                )
+            except Exception as e:
+                logger.error(f"Webhook failed for lead {lead.id}: {e}")
+
+        elif action_type == "add_tag":
+            tag = config.get("tag")
+            if not tag:
+                logger.warning("add_tag action missing 'tag' in config")
+                return
+            current_tags = lead.tags_json if isinstance(lead.tags_json, list) else []
+            if tag not in current_tags:
+                current_tags.append(tag)
+                lead.tags_json = current_tags
+                lead.updated_at = datetime.now()
+                self.db.commit()
+                logger.info(f"Tag '{tag}' added to lead {lead.id}")
+
+        else:
+            logger.warning(f"Unknown action type: {action_type}")
+

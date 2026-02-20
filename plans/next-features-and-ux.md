@@ -27,6 +27,17 @@ Ce plan vise à combler les dernières lacunes critiques identifiées lors des t
 - **Objectif** : Transition automatique dans le funnel.
 - **Action** : Déclencher un changement d'étape vers "BOOKED" automatiquement lorsqu'un rendez-vous est créé.
 
+### 2.3. Automatisations Avancées (Nouvelle Phase)
+- **Triggers additionnels** :
+    - `lead_created` : Déclenché lors de l'ajout manuel ou via landing page.
+    - `task_completed` : Déclenché quand une tâche passe en statut "Done".
+- **Actions additionnelles** :
+    - `send_webhook` : Envoyer les données du lead à une URL externe (ex: Zapier/Slack).
+    - `add_tag` : Ajouter automatiquement un tag au lead (ex: "VIP" si score > 90).
+- **Logique métier** :
+    - "Si un lead est créé, alors envoyer un webhook de notification."
+    - "Si une tâche de 'Qualification' est terminée, alors passer le lead en étape 'engaged'."
+
 ## 3. Déploiement & Versioning
 
 ### 3.1. Consolidation Git

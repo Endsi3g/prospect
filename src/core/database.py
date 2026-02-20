@@ -101,7 +101,7 @@ if DATABASE_URL.startswith("postgresql://"):
                         try:
                             if 't_engine' in locals():
                                 t_engine.dispose()
-                        except:
+                        except Exception:
                             pass
 
                 print(f"Attempting to auto-detect Supabase region pooler for project {project_ref}...", flush=True)
@@ -135,7 +135,7 @@ if DATABASE_URL.startswith("postgresql://"):
                         if "connect_args" not in create_engine_kwargs:
                             create_engine_kwargs["connect_args"] = {}
                         create_engine_kwargs["connect_args"]["hostaddr"] = fallback_ipv4
-                    except:
+                    except Exception:
                         pass
 
             else:

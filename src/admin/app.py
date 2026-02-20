@@ -80,6 +80,7 @@ from .import_service import commit_csv_import, preview_csv_import
 from .research_service import run_web_research
 from . import secrets_manager as _sec_svc
 from .stats_service import compute_core_funnel_stats, list_leads
+from ..workflows.rules_engine import RulesEngine
 from ..ai_engine.rag_service import rag_service
 from ..ai_engine.generator import MessageGenerator
 
@@ -2758,6 +2759,14 @@ def _update_task_payload(
             )
             if next_status == "Done":
                 task.closed_at = now
+                # Trigger task_completed workflow if the task is linked to a lead
+                if task.lead_id:
+                    try:
+                        lead = db.query(DBLead).filter(DBLead.id == task.lead_id).first()
+                        if lead:
+                            RulesEngine(db).evaluate_and_execute(lead, "task_completed")
+                    except Exception:
+                        logger.warning("Failed to trigger task_completed workflow.", exc_info=True)
             elif previous_status == "Done":
                 task.closed_at = None
     if "priority" in update_data:
@@ -3032,6 +3041,16 @@ def _close_task_payload(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to close task.",
         ) from exc
+
+    # Trigger task_completed workflow if the task is linked to a lead
+    if task.lead_id:
+        try:
+            lead = db.query(DBLead).filter(DBLead.id == task.lead_id).first()
+            if lead:
+                RulesEngine(db).evaluate_and_execute(lead, "task_completed")
+        except Exception:
+            logger.warning("Failed to trigger task_completed workflow.", exc_info=True)
+
     return _get_task_payload(db, task_id)
 
 

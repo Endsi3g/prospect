@@ -46,5 +46,8 @@ jobs:
       - name: Lint frontend
         run: npm run lint --prefix admin-dashboard
 
+      - name: Run frontend unit tests
+        run: npm run test:unit --prefix admin-dashboard
+
       - name: Build frontend
         run: npm run build --prefix admin-dashboard

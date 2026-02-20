@@ -22,9 +22,14 @@ pytest-cache-files-*/
 verify.log
 
 # Local data
+*.db
 prospect.db
+uprising_hunter.db
 scripts/ops/.localhost_pids.json
 artifacts/
+
+# Generated API spec
+openapi.json
 
 # Node / Next.js build artifacts
 admin-dashboard/node_modules/

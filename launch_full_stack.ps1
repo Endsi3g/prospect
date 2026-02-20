@@ -38,7 +38,7 @@ catch {
 }
 
 # 3. Monitoring Start
-Write-Host "📊 Starting Monitoring (Prometheus & Grafana)..." -ForegroundColor Yellow
+Write-Host "Starting Monitoring (Prometheus and Grafana)..." -ForegroundColor Yellow
 try {
     Set-Location $MonitoringDir
     # Check if prom key is set
@@ -61,7 +61,7 @@ finally {
 # 4. Backend Start
 Write-Host "🐍 Starting Backend (FastAPI)..." -ForegroundColor Yellow
 $PythonPath = Join-Path $AppRoot ".venv\Scripts\python.exe"
-$BackendCmd = "cmd /k `"$PythonPath`" -m uvicorn src.api.server:app --port 8000 --reload"
+$BackendCmd = "cmd /k `"$PythonPath`" -m uvicorn src.admin.app:create_app --factory --port 8000 --reload"
 Start-Process -FilePath "cmd" -ArgumentList "/c start $BackendCmd" -WindowStyle Normal
 
 # 5. Frontend Start (with Changelog)
@@ -78,7 +78,7 @@ finally {
 }
 
 # 6. Git Operations
-Write-Host "💾 Git Backup & Changelog..." -ForegroundColor Yellow
+Write-Host "Git Backup and Changelog..." -ForegroundColor Yellow
 $CommitMsg = Read-Host "Enter commit message (or press Enter to skip)"
 if (-not [string]::IsNullOrWhiteSpace($CommitMsg)) {
     git add .
